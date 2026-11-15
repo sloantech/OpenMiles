@@ -32,6 +32,21 @@ jobs:
       - name: Run the tests, the code checker, and build the app
         run: ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
 
+      - name: Confirm the tests really ran
+        run: |
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          total = failed = skipped = 0
+          for f in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
+              r = ET.parse(f).getroot()
+              total += int(r.get("tests", 0))
+              failed += int(r.get("failures", 0)) + int(r.get("errors", 0))
+              skipped += int(r.get("skipped", 0))
+          print(f"Tests run: {total}, failed: {failed}, skipped: {skipped}")
+          if total < 20 or failed or skipped:
+              raise SystemExit("Tests did not all run and pass")
+          PY
+
       - name: Privacy check - the app must not have internet access
         run: |
           M=$(find app/build -path '*merged_manifests*' -name AndroidManifest.xml | grep -i debug | head -1)
