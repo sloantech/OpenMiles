@@ -3,6 +3,7 @@ package org.openmiles.app
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -11,14 +12,13 @@ import org.openmiles.app.data.AppDatabase
 import org.openmiles.app.data.Category
 import org.openmiles.app.data.Rate
 import org.openmiles.app.data.Seed
-import org.openmiles.app.data.Trip
 import org.openmiles.app.tracking.LiveTrip
 import org.openmiles.app.tracking.TrackingState
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val db = AppDatabase.get(app)
 
-    val trips = db.tripDao().observeAll()
+    val trips = db.tripDao().observeSummaries()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val categories = db.categoryDao().observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -43,35 +43,51 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setNotes(tripId: Long, notes: String) {
-        viewModelScope.launch { db.tripDao().setNotes(tripId, notes) }
+        viewModelScope.launch { db.tripDao().setNotes(tripId, notes.take(MAX_NOTES)) }
     }
 
-    fun deleteTrip(trip: Trip) {
-        viewModelScope.launch { db.tripDao().delete(trip) }
+    fun deleteTrip(tripId: Long) {
+        viewModelScope.launch { db.tripDao().deleteById(tripId) }
     }
 
     fun addCategory(name: String, kind: String) {
+        val clean = name.trim().take(MAX_CATEGORY_NAME)
+        if (clean.isEmpty()) return
         viewModelScope.launch {
-            db.categoryDao().insert(Category(name = name.trim(), kind = kind))
+            db.categoryDao().insert(Category(name = clean, kind = kind))
         }
     }
 
     fun deleteCategory(category: Category) {
+        // Built-in categories can never be removed.
+        if (category.builtIn) return
         viewModelScope.launch {
-            db.tripDao().clearCategory(category.id)
-            db.categoryDao().delete(category)
+            // Both steps succeed together or not at all.
+            db.withTransaction {
+                db.tripDao().clearCategory(category.id)
+                db.categoryDao().delete(category)
+            }
         }
     }
 
     fun addRate(kind: String, effectiveFrom: String, dollarsPerMile: Double) {
         viewModelScope.launch {
-            db.rateDao().insert(
-                Rate(kind = kind, effectiveFrom = effectiveFrom, dollarsPerMile = dollarsPerMile)
-            )
+            db.withTransaction {
+                // Replace any rate that starts on the same date for the same kind.
+                db.rateDao().deleteFor(kind, effectiveFrom)
+                db.rateDao().insert(
+                    Rate(kind = kind, effectiveFrom = effectiveFrom, dollarsPerMile = dollarsPerMile)
+                )
+            }
         }
     }
 
     fun deleteRate(rate: Rate) {
         viewModelScope.launch { db.rateDao().delete(rate) }
+    }
+
+    companion object {
+        const val MAX_NOTES = 200
+        const val MAX_CATEGORY_NAME = 40
     }
 }

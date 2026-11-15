@@ -3,7 +3,7 @@ package org.openmiles.app.domain
 import org.openmiles.app.data.Category
 import org.openmiles.app.data.Kind
 import org.openmiles.app.data.Rate
-import org.openmiles.app.data.Trip
+import org.openmiles.app.data.TripSummary
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -35,7 +35,7 @@ object Calc {
     }
 
     /** Dollar value of one trip. Unclassified trips are worth nothing yet. */
-    fun valueOf(trip: Trip, category: Category?, rates: List<Rate>): Double {
+    fun valueOf(trip: TripSummary, category: Category?, rates: List<Rate>): Double {
         if (category == null) return 0.0
         return miles(trip.distanceMeters) * rateFor(category.kind, toDate(trip.startTime), rates)
     }
@@ -56,10 +56,22 @@ object Calc {
 }
 
 object Csv {
-    private fun esc(s: String): String = "\"" + s.replace("\"", "\"\"") + "\""
+    /**
+     * Quotes a text field for CSV. Fields that start with =, +, -, or @ are prefixed with an
+     * apostrophe so a spreadsheet shows them as text instead of running them as a formula.
+     */
+    private fun esc(raw: String): String {
+        val safe = if (raw.isNotEmpty() && raw[0] in "=+-@\t\r") "'$raw" else raw
+        return "\"" + safe.replace("\"", "\"\"") + "\""
+    }
 
     /** A spreadsheet-ready log of every trip in the given year. */
-    fun build(year: Int, trips: List<Trip>, categories: List<Category>, rates: List<Rate>): String {
+    fun build(
+        year: Int,
+        trips: List<TripSummary>,
+        categories: List<Category>,
+        rates: List<Rate>
+    ): String {
         val byId = categories.associateBy { it.id }
         val sb = StringBuilder()
         sb.append("Date,Start,End,Miles,Category,Type,Rate per mile,Value,Notes\n")

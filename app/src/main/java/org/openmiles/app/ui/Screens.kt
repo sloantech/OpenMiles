@@ -3,10 +3,12 @@
 package org.openmiles.app.ui
 
 import android.Manifest
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -26,6 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
@@ -62,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -70,7 +74,7 @@ import org.openmiles.app.AppViewModel
 import org.openmiles.app.data.Category
 import org.openmiles.app.data.Kind
 import org.openmiles.app.data.Rate
-import org.openmiles.app.data.Trip
+import org.openmiles.app.data.TripSummary
 import org.openmiles.app.domain.Calc
 import org.openmiles.app.domain.Csv
 import org.openmiles.app.tracking.LiveTrip
@@ -126,18 +130,25 @@ fun DrivesScreen(vm: AppViewModel) {
     val live by vm.live.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var editingId by remember { mutableStateOf<Long?>(null) }
+    var permissionDenied by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
         val fine = result[Manifest.permission.ACCESS_FINE_LOCATION] == true
         val coarse = result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (fine || coarse) TrackingService.start(context)
+        if (fine || coarse) {
+            permissionDenied = false
+            TrackingService.start(context)
+        } else {
+            permissionDenied = true
+        }
     }
 
     Column(Modifier.fillMaxSize()) {
         RecordCard(
             live = live,
+            permissionDenied = permissionDenied,
             onStart = {
                 val perms = mutableListOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -187,7 +198,7 @@ fun DrivesScreen(vm: AppViewModel) {
             onPick = { vm.setCategory(editing.id, it) },
             onSaveNotes = { vm.setNotes(editing.id, it) },
             onDelete = {
-                vm.deleteTrip(editing)
+                vm.deleteTrip(editing.id)
                 editingId = null
             },
             onClose = { editingId = null }
@@ -196,7 +207,12 @@ fun DrivesScreen(vm: AppViewModel) {
 }
 
 @Composable
-private fun RecordCard(live: LiveTrip, onStart: () -> Unit, onStop: () -> Unit) {
+private fun RecordCard(
+    live: LiveTrip,
+    permissionDenied: Boolean,
+    onStart: () -> Unit,
+    onStop: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -214,6 +230,14 @@ private fun RecordCard(live: LiveTrip, onStart: () -> Unit, onStop: () -> Unit) 
                 Button(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Stop drive") }
             } else {
                 Text("Ready when you are", style = MaterialTheme.typography.titleMedium)
+                if (permissionDenied) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "OpenMiles needs location permission to record drives. " +
+                            "Turn it on in your phone's Settings, under Apps, OpenMiles, Permissions.",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
                 Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) { Text("Start drive") }
             }
@@ -223,7 +247,7 @@ private fun RecordCard(live: LiveTrip, onStart: () -> Unit, onStop: () -> Unit) 
 
 @Composable
 private fun TripRow(
-    trip: Trip,
+    trip: TripSummary,
     category: Category?,
     rates: List<Rate>,
     onSwipeBusiness: () -> Unit,
@@ -303,7 +327,7 @@ private fun TripRow(
 
 @Composable
 private fun TripDialog(
-    trip: Trip,
+    trip: TripSummary,
     categories: List<Category>,
     onPick: (Long?) -> Unit,
     onSaveNotes: (String) -> Unit,
@@ -311,6 +335,8 @@ private fun TripDialog(
     onClose: () -> Unit
 ) {
     var notes by remember(trip.id) { mutableStateOf(trip.notes) }
+    var confirmDelete by remember(trip.id) { mutableStateOf(false) }
+
     AlertDialog(
         onDismissRequest = {
             onSaveNotes(notes)
@@ -335,7 +361,7 @@ private fun TripDialog(
                 Spacer(Modifier.height(12.dp))
                 OutlinedTextField(
                     value = notes,
-                    onValueChange = { notes = it },
+                    onValueChange = { notes = it.take(AppViewModel.MAX_NOTES) },
                     label = { Text("Notes (client, purpose)") },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -348,11 +374,28 @@ private fun TripDialog(
             }) { Text("Done") }
         },
         dismissButton = {
-            TextButton(onClick = onDelete) {
+            TextButton(onClick = { confirmDelete = true }) {
                 Text("Delete drive", color = MaterialTheme.colorScheme.error)
             }
         }
     )
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete this drive?") },
+            text = { Text("This removes it from your log and your reports. It can't be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    onDelete()
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Keep it") }
+            }
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -414,7 +457,10 @@ fun ReportsScreen(vm: AppViewModel) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
                         Text(cat.name, fontWeight = FontWeight.Bold)
-                        Text("${Kind.label(cat.kind)}, ${mine.size} drives", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            "${Kind.label(cat.kind)}, ${mine.size} drives",
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text(Calc.fmtMiles(mine.sumOf { it.distanceMeters }))
@@ -435,20 +481,25 @@ fun ReportsScreen(vm: AppViewModel) {
 private fun shareCsv(
     context: Context,
     year: Int,
-    trips: List<Trip>,
+    trips: List<TripSummary>,
     categories: List<Category>,
     rates: List<Rate>
 ) {
-    val dir = File(context.cacheDir, "exports").apply { mkdirs() }
-    val file = File(dir, "openmiles-$year.csv")
-    file.writeText(Csv.build(year, trips, categories, rates))
-    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = "text/csv"
-        putExtra(Intent.EXTRA_STREAM, uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    try {
+        val dir = File(context.cacheDir, "exports").apply { mkdirs() }
+        val file = File(dir, "openmiles-$year.csv")
+        file.writeText(Csv.build(year, trips, categories, rates))
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newRawUri("OpenMiles log", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(send, "Share mileage log"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Could not create the spreadsheet.", Toast.LENGTH_LONG).show()
     }
-    context.startActivity(Intent.createChooser(send, "Share mileage log"))
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +567,7 @@ fun SettingsScreen(vm: AppViewModel) {
             Text("About OpenMiles", style = MaterialTheme.typography.titleLarge)
             Text(
                 "Free and open source. No ads, no account, no subscription. " +
-                    "Your drives stay on this phone.",
+                    "This app has no internet access, so your drives never leave this phone.",
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(Modifier.height(8.dp))
@@ -548,7 +599,13 @@ fun SettingsScreen(vm: AppViewModel) {
 }
 
 private fun openLink(context: Context, url: String) {
-    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    // Only web links are opened, whatever is typed into AppConfig.
+    if (!url.startsWith("https://")) return
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    } catch (e: Exception) {
+        Toast.makeText(context, "No app found to open this link.", Toast.LENGTH_LONG).show()
+    }
 }
 
 @Composable
@@ -562,7 +619,7 @@ private fun AddCategoryDialog(onAdd: (String, String) -> Unit, onClose: () -> Un
             Column {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { name = it.take(AppViewModel.MAX_CATEGORY_NAME) },
                     label = { Text("Name, like Client visit") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -599,7 +656,10 @@ private fun AddRateDialog(onAdd: (String, String, Double) -> Unit, onClose: () -
     var date by remember { mutableStateOf(LocalDate.now().toString()) }
     var dollars by remember { mutableStateOf("") }
     val dateOk = runCatching { LocalDate.parse(date) }.isSuccess
-    val amount = dollars.toDoubleOrNull()
+    // Accept a comma as the decimal mark too, since some phones use one.
+    val amount = dollars.trim().replace(',', '.').toDoubleOrNull()
+    // A rate above $10 per mile is almost certainly a typo, like 76 instead of 0.76.
+    val amountOk = amount != null && amount >= 0.0 && amount <= 10.0
     AlertDialog(
         onDismissRequest = onClose,
         title = { Text("New rate") },
@@ -628,6 +688,13 @@ private fun AddRateDialog(onAdd: (String, String, Double) -> Unit, onClose: () -
                     value = dollars,
                     onValueChange = { dollars = it },
                     label = { Text("Dollars per mile, like 0.76") },
+                    isError = dollars.isNotBlank() && !amountOk,
+                    supportingText = {
+                        if (dollars.isNotBlank() && !amountOk) {
+                            Text("Enter a number from 0 to 10, like 0.76")
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -635,7 +702,7 @@ private fun AddRateDialog(onAdd: (String, String, Double) -> Unit, onClose: () -
         },
         confirmButton = {
             TextButton(
-                enabled = dateOk && amount != null && amount >= 0.0,
+                enabled = dateOk && amountOk,
                 onClick = {
                     onAdd(kind, date, amount ?: 0.0)
                     onClose()

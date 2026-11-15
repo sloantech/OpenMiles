@@ -29,7 +29,7 @@ import org.openmiles.app.MainActivity
 import org.openmiles.app.R
 import org.openmiles.app.data.AppDatabase
 import org.openmiles.app.data.Trip
-import java.util.Locale
+import org.openmiles.app.domain.TripRecorder
 
 /** What the screen shows while a drive is being recorded. */
 data class LiveTrip(
@@ -47,58 +47,46 @@ data class FinishedTrip(
     val route: String
 )
 
+/** Shared between the recording service and the screen. All the math lives in TripRecorder. */
 object TrackingState {
     private val _live = MutableStateFlow(LiveTrip())
     val live: StateFlow<LiveTrip> = _live
 
-    private val points = mutableListOf<String>()
-    private var last: Location? = null
-    private var meters = 0.0
-
-    /** Ignore GPS fixes that are less accurate than this (meters). */
-    private const val MAX_ACCURACY = 50f
-
-    /** Ignore movement smaller than this (meters). Cuts GPS jitter while parked. */
-    private const val MIN_STEP = 10.0
-
-    /** Drives shorter than this are thrown away (meters). */
-    private const val MIN_TRIP = 50.0
+    private val recorder = TripRecorder()
 
     @Synchronized
     fun begin(now: Long) {
-        points.clear()
-        last = null
-        meters = 0.0
+        recorder.reset()
         _live.value = LiveTrip(active = true, startTime = now)
     }
 
     @Synchronized
     fun onLocation(loc: Location) {
         if (!_live.value.active) return
-        if (loc.hasAccuracy() && loc.accuracy > MAX_ACCURACY) return
-        val prev = last
-        if (prev != null) {
-            val step = prev.distanceTo(loc).toDouble()
-            if (step < MIN_STEP) return
-            meters += step
+        val time = if (loc.time > 0L) loc.time else System.currentTimeMillis()
+        val accepted = recorder.add(
+            TripRecorder.Fix(
+                lat = loc.latitude,
+                lng = loc.longitude,
+                timeMs = time,
+                accuracyM = if (loc.hasAccuracy()) loc.accuracy else null
+            )
+        )
+        if (accepted) {
+            _live.value = _live.value.copy(meters = recorder.meters, points = recorder.pointCount)
         }
-        last = loc
-        points.add(String.format(Locale.US, "%.5f,%.5f,%d", loc.latitude, loc.longitude, loc.time))
-        _live.value = _live.value.copy(meters = meters, points = points.size)
     }
 
     /** Ends the drive. Returns null if it was too short to keep. */
     @Synchronized
     fun finish(now: Long): FinishedTrip? {
         val state = _live.value
-        val result = if (state.active && meters >= MIN_TRIP) {
-            FinishedTrip(state.startTime, now, meters, points.joinToString(";"))
+        val result = if (state.active && recorder.meters >= TripRecorder.MIN_TRIP_M) {
+            FinishedTrip(state.startTime, now, recorder.meters, recorder.routeString())
         } else {
             null
         }
-        points.clear()
-        last = null
-        meters = 0.0
+        recorder.reset()
         _live.value = LiveTrip()
         return result
     }
@@ -137,6 +125,7 @@ class TrackingService : Service() {
             try {
                 client.requestLocationUpdates(request, callback, Looper.getMainLooper())
             } catch (e: SecurityException) {
+                // Permission was taken away. Nothing was recorded, so just stop.
                 TrackingState.finish(System.currentTimeMillis())
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -155,15 +144,19 @@ class TrackingService : Service() {
         }
         val appContext = applicationContext
         scope.launch {
-            AppDatabase.get(appContext).tripDao().insert(
-                Trip(
-                    startTime = finished.startTime,
-                    endTime = finished.endTime,
-                    distanceMeters = finished.meters,
-                    route = finished.route
+            try {
+                AppDatabase.get(appContext).tripDao().insert(
+                    Trip(
+                        startTime = finished.startTime,
+                        endTime = finished.endTime,
+                        distanceMeters = finished.meters,
+                        route = finished.route
+                    )
                 )
-            )
-            stopSelf()
+            } finally {
+                // Always release the service, even if saving failed.
+                stopSelf()
+            }
         }
     }
 

@@ -51,6 +51,19 @@ data class Trip(
     val route: String = ""
 )
 
+/**
+ * What the screens need to know about a drive. It leaves out the route, which can be large,
+ * so the drive list stays fast and light on memory after years of use.
+ */
+data class TripSummary(
+    val id: Long,
+    val startTime: Long,
+    val endTime: Long,
+    val distanceMeters: Double,
+    val categoryId: Long?,
+    val notes: String
+)
+
 /** A mileage rate that starts on a date. The newest one on or before the trip date wins. */
 @Entity(tableName = "rates")
 data class Rate(
@@ -63,14 +76,17 @@ data class Rate(
 
 @Dao
 interface TripDao {
-    @Query("SELECT * FROM trips ORDER BY startTime DESC")
-    fun observeAll(): Flow<List<Trip>>
+    @Query(
+        "SELECT id, startTime, endTime, distanceMeters, categoryId, notes " +
+            "FROM trips ORDER BY startTime DESC"
+    )
+    fun observeSummaries(): Flow<List<TripSummary>>
 
     @Insert
     suspend fun insert(trip: Trip): Long
 
-    @Delete
-    suspend fun delete(trip: Trip)
+    @Query("DELETE FROM trips WHERE id = :id")
+    suspend fun deleteById(id: Long)
 
     @Query("UPDATE trips SET categoryId = :categoryId WHERE id = :id")
     suspend fun setCategory(id: Long, categoryId: Long?)
@@ -116,6 +132,10 @@ interface RateDao {
 
     @Delete
     suspend fun delete(rate: Rate)
+
+    /** Used so two rates never start on the same date for the same kind. */
+    @Query("DELETE FROM rates WHERE kind = :kind AND effectiveFrom = :effectiveFrom")
+    suspend fun deleteFor(kind: String, effectiveFrom: String)
 }
 
 @Database(
@@ -145,6 +165,22 @@ abstract class AppDatabase : RoomDatabase() {
 
 /** Fills a brand new database with the standard categories and IRS rates. */
 object Seed {
+    /**
+     * IRS standard mileage rates, in dollars per mile.
+     * Source: https://www.irs.gov/tax-professionals/standard-mileage-rates
+     * Charity is set by law at 14 cents and has not changed.
+     */
+    val defaultRates: List<Rate> = listOf(
+        Rate(kind = Kind.BUSINESS, effectiveFrom = "2025-01-01", dollarsPerMile = 0.70),
+        Rate(kind = Kind.MEDICAL, effectiveFrom = "2025-01-01", dollarsPerMile = 0.21),
+        Rate(kind = Kind.CHARITY, effectiveFrom = "2025-01-01", dollarsPerMile = 0.14),
+        Rate(kind = Kind.BUSINESS, effectiveFrom = "2026-01-01", dollarsPerMile = 0.725),
+        Rate(kind = Kind.MEDICAL, effectiveFrom = "2026-01-01", dollarsPerMile = 0.205),
+        Rate(kind = Kind.CHARITY, effectiveFrom = "2026-01-01", dollarsPerMile = 0.14),
+        Rate(kind = Kind.BUSINESS, effectiveFrom = "2026-07-01", dollarsPerMile = 0.76),
+        Rate(kind = Kind.MEDICAL, effectiveFrom = "2026-07-01", dollarsPerMile = 0.235)
+    )
+
     suspend fun run(db: AppDatabase) {
         if (db.categoryDao().count() == 0) {
             Kind.all.forEach { kind ->
@@ -154,20 +190,7 @@ object Seed {
             }
         }
         if (db.rateDao().count() == 0) {
-            // IRS standard mileage rates, in dollars per mile.
-            // Source: irs.gov/tax-professionals/standard-mileage-rates
-            db.rateDao().insertAll(
-                listOf(
-                    Rate(kind = Kind.BUSINESS, effectiveFrom = "2025-01-01", dollarsPerMile = 0.70),
-                    Rate(kind = Kind.MEDICAL, effectiveFrom = "2025-01-01", dollarsPerMile = 0.21),
-                    Rate(kind = Kind.CHARITY, effectiveFrom = "2025-01-01", dollarsPerMile = 0.14),
-                    Rate(kind = Kind.BUSINESS, effectiveFrom = "2026-01-01", dollarsPerMile = 0.725),
-                    Rate(kind = Kind.MEDICAL, effectiveFrom = "2026-01-01", dollarsPerMile = 0.205),
-                    Rate(kind = Kind.CHARITY, effectiveFrom = "2026-01-01", dollarsPerMile = 0.14),
-                    Rate(kind = Kind.BUSINESS, effectiveFrom = "2026-07-01", dollarsPerMile = 0.76),
-                    Rate(kind = Kind.MEDICAL, effectiveFrom = "2026-07-01", dollarsPerMile = 0.235)
-                )
-            )
+            db.rateDao().insertAll(defaultRates)
         }
     }
 }

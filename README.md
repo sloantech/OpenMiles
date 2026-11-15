@@ -3,8 +3,9 @@
 A free, open source mileage tracker for Android. No ads, no account, no subscription.
 Your drives stay on your phone.
 
-**Status: Phase 1 (early test version).** It has not been test-built yet, so the first
-build may need small fixes.
+**Status: Phase 1 (early test version).** It builds, and automatic tests check the mileage math,
+the IRS rate dates, the CSV export, and the GPS distance filtering. It has not yet been
+tested on a real phone while driving, so treat early drives as a test.
 
 ## What it does now
 
@@ -40,11 +41,20 @@ If the build shows a red X, open it, copy the error text, and send it to Claude 
 - **App ID** (`org.openmiles.app`) is set in `app/build.gradle.kts`. Pick the final one before publishing anywhere.
   It cannot be changed after you publish to Google Play.
 
+## Privacy and safety
+
+- The app has **no internet permission**. It cannot send your drives anywhere. The build fails if that ever changes.
+- Drives are stored only in the app's private storage on your phone.
+- Location is used only while you are recording a drive, and a notification is always showing.
+- The spreadsheet export is only shared when you tap Export, and only to the app you pick.
+
 ## Known limits of Phase 1
 
 - Recording is manual. If Android closes the app while a drive is recording, that drive is lost.
 - No map yet.
 - No backup. Auto-backup to Google is turned off on purpose so drives never leave the phone.
+- GPS distance is a straight-line sum between points, so it can read a little short on winding roads. Compare a few drives with your car's trip meter.
+- Drives shorter than about 50 meters are thrown away on purpose.
 - The debug build is for testing. A signed release build comes later.
 
 ## License

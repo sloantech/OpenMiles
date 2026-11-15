@@ -6,12 +6,19 @@ on:
   pull_request:
   workflow_dispatch:
 
+# The build only needs to read the code. It gets no other permissions.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Get the code
         uses: actions/checkout@v4
+
+      - name: Check the Gradle wrapper file is the genuine one
+        uses: gradle/actions/wrapper-validation@v4
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -22,11 +29,34 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build the app
-        run: ./gradlew assembleDebug --stacktrace
+      - name: Run the tests, the code checker, and build the app
+        run: ./gradlew testDebugUnitTest lintDebug assembleDebug --stacktrace
+
+      - name: Privacy check - the app must not have internet access
+        run: |
+          M=$(find app/build -path '*merged_manifests*' -name AndroidManifest.xml | grep -i debug | head -1)
+          if [ -z "$M" ]; then echo "Could not find the merged manifest"; exit 1; fi
+          echo "Checking $M"
+          echo "Permissions the app asks for:"
+          grep -o 'uses-permission[^>]*android:name="[^"]*"' "$M" | grep -o 'android:name="[^"]*"' | sort -u
+          if grep -q 'android.permission.INTERNET' "$M"; then
+            echo "FAIL: the app asks for internet access"
+            exit 1
+          fi
+          echo "OK: no internet permission"
 
       - name: Save the installable file
         uses: actions/upload-artifact@v4
         with:
           name: OpenMiles-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Save the test and code-check reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
