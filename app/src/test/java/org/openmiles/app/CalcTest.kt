@@ -3,6 +3,7 @@ package org.openmiles.app
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import org.openmiles.app.data.Category
 import org.openmiles.app.data.Kind
@@ -11,6 +12,7 @@ import org.openmiles.app.data.Seed
 import org.openmiles.app.data.TripSummary
 import org.openmiles.app.domain.Calc
 import org.openmiles.app.domain.Csv
+import org.openmiles.app.domain.DateRange
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -120,5 +122,53 @@ class CalcTest {
         assertEquals(2, lines.size)
         assertTrue(lines[1].contains("\"Unclassified\""))
         assertFalse(csv.contains("2025-12-31"))
+    }
+
+    @Test
+    fun rangeIncludesBothEndDays() {
+        val range = DateRange(LocalDate.of(2026, 3, 10), LocalDate.of(2026, 3, 20))
+        assertTrue(LocalDate.of(2026, 3, 10) in range)
+        assertTrue(LocalDate.of(2026, 3, 20) in range)
+        assertFalse(LocalDate.of(2026, 3, 9) in range)
+        assertFalse(LocalDate.of(2026, 3, 21) in range)
+    }
+
+    @Test
+    fun rangeRejectsEndBeforeStart() {
+        assertThrows(IllegalArgumentException::class.java) {
+            DateRange(LocalDate.of(2026, 3, 20), LocalDate.of(2026, 3, 10))
+        }
+    }
+
+    @Test
+    fun monthAndQuarterPresetsHandleEdges() {
+        val nov = LocalDate.of(2026, 11, 15)
+        assertEquals(DateRange(LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 30)), DateRange.month(nov))
+        assertEquals(DateRange(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31)), DateRange.lastMonth(nov))
+        assertEquals(DateRange(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 12, 31)), DateRange.quarter(nov))
+        assertEquals(DateRange(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 9, 30)), DateRange.lastQuarter(nov))
+        // January looks back into the previous year.
+        val jan = LocalDate.of(2026, 1, 10)
+        assertEquals(DateRange(LocalDate.of(2025, 12, 1), LocalDate.of(2025, 12, 31)), DateRange.lastMonth(jan))
+        assertEquals(DateRange(LocalDate.of(2025, 10, 1), LocalDate.of(2025, 12, 31)), DateRange.lastQuarter(jan))
+        // Leap-year February.
+        assertEquals(
+            DateRange(LocalDate.of(2028, 2, 1), LocalDate.of(2028, 2, 29)),
+            DateRange.month(LocalDate.of(2028, 2, 10))
+        )
+    }
+
+    @Test
+    fun csvRangeIncludesBoundaryDaysAndExcludesOutsideDays() {
+        val before = trip(1.0, millis(2026, 3, 9, hour = 23))
+        val first = trip(1.0, millis(2026, 3, 10, hour = 0))
+        val last = trip(1.0, millis(2026, 3, 20, hour = 23))
+        val after = trip(1.0, millis(2026, 3, 21, hour = 0))
+        val range = DateRange(LocalDate.of(2026, 3, 10), LocalDate.of(2026, 3, 20))
+        val csv = Csv.buildRange(range, listOf(before, first, last, after), emptyList(), rates)
+        val lines = csv.trim().split("\n")
+        assertEquals(3, lines.size)
+        assertTrue(lines[1].startsWith("2026-03-10,"))
+        assertTrue(lines[2].startsWith("2026-03-20,"))
     }
 }

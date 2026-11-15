@@ -38,6 +38,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -52,10 +54,12 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -76,11 +80,14 @@ import org.openmiles.app.data.Kind
 import org.openmiles.app.data.Rate
 import org.openmiles.app.data.TripSummary
 import org.openmiles.app.domain.Calc
+import org.openmiles.app.domain.DateRange
 import org.openmiles.app.domain.Csv
 import org.openmiles.app.tracking.LiveTrip
 import org.openmiles.app.tracking.TrackingService
 import java.io.File
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 // ---------------------------------------------------------------------------
 // App shell with three tabs
@@ -399,34 +406,88 @@ private fun TripDialog(
 }
 
 // ---------------------------------------------------------------------------
-// Reports tab: totals by category and CSV export
+// Reports tab: totals by category for any date range, and CSV export
 // ---------------------------------------------------------------------------
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ReportsScreen(vm: AppViewModel) {
     val trips by vm.trips.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
     val rates by vm.rates.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var year by rememberSaveable { mutableIntStateOf(LocalDate.now().year) }
+    val today = LocalDate.now()
+    val thisYear = DateRange.year(today.year)
+    var fromDay by rememberSaveable { mutableLongStateOf(thisYear.from.toEpochDay()) }
+    var toDay by rememberSaveable { mutableLongStateOf(thisYear.to.toEpochDay()) }
+    var picking by rememberSaveable { mutableStateOf("") } // "", "from", or "to"
 
-    val yearTrips = trips.filter { Calc.toDate(it.startTime).year == year }
+    val range = DateRange(LocalDate.ofEpochDay(fromDay), LocalDate.ofEpochDay(maxOf(fromDay, toDay)))
+    val rangeTrips = trips.filter { Calc.toDate(it.startTime) in range }
     val byId = categories.associateBy { it.id }
-    val unclassified = yearTrips.count { it.categoryId == null || byId[it.categoryId] == null }
-    val totalValue = yearTrips.sumOf { Calc.valueOf(it, byId[it.categoryId], rates) }
+    val unclassified = rangeTrips.count { it.categoryId == null || byId[it.categoryId] == null }
+    val totalValue = rangeTrips.sumOf { Calc.valueOf(it, byId[it.categoryId], rates) }
+
+    val presets = listOf(
+        "This month" to DateRange.month(today),
+        "Last month" to DateRange.lastMonth(today),
+        "This quarter" to DateRange.quarter(today),
+        "Last quarter" to DateRange.lastQuarter(today),
+        "This year" to DateRange.year(today.year),
+        "Last year" to DateRange.year(today.year - 1)
+    )
 
     Column(
         Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = { year -= 1 }) { Text("<") }
-            Text("$year", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            TextButton(onClick = { year += 1 }) { Text(">") }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            presets.forEach { (label, preset) ->
+                FilterChip(
+                    selected = range == preset,
+                    onClick = {
+                        fromDay = preset.from.toEpochDay()
+                        toDay = preset.to.toEpochDay()
+                    },
+                    label = { Text(label) }
+                )
+            }
+        }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { picking = "from" }, modifier = Modifier.weight(1f)) {
+                Text("From ${Calc.fmtDay(range.from)}")
+            }
+            OutlinedButton(onClick = { picking = "to" }, modifier = Modifier.weight(1f)) {
+                Text("To ${Calc.fmtDay(range.to)}")
+            }
+        }
+
+        if (picking.isNotEmpty()) {
+            val initial = if (picking == "from") range.from else range.to
+            val state = rememberDatePickerState(
+                initialSelectedDateMillis = initial.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+            )
+            DatePickerDialog(
+                onDismissRequest = { picking = "" },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val ms = state.selectedDateMillis
+                        if (ms != null) {
+                            val day = Instant.ofEpochMilli(ms).atZone(ZoneOffset.UTC).toLocalDate().toEpochDay()
+                            if (picking == "from") {
+                                fromDay = day
+                                if (toDay < day) toDay = day
+                            } else {
+                                toDay = day
+                                if (fromDay > day) fromDay = day
+                            }
+                        }
+                        picking = ""
+                    }) { Text("OK") }
+                },
+                dismissButton = { TextButton(onClick = { picking = "" }) { Text("Cancel") } }
+            ) { DatePicker(state = state) }
         }
 
         Card(
@@ -440,7 +501,7 @@ fun ReportsScreen(vm: AppViewModel) {
                     style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.Bold
                 )
-                Text("${yearTrips.size} drives, ${Calc.fmtMiles(yearTrips.sumOf { it.distanceMeters })}")
+                Text("${rangeTrips.size} drives, ${Calc.fmtMiles(rangeTrips.sumOf { it.distanceMeters })}")
                 if (unclassified > 0) {
                     Text(
                         "$unclassified drives still need a category.",
@@ -452,7 +513,7 @@ fun ReportsScreen(vm: AppViewModel) {
 
         Text("By category", style = MaterialTheme.typography.titleMedium)
         categories.forEach { cat ->
-            val mine = yearTrips.filter { it.categoryId == cat.id }
+            val mine = rangeTrips.filter { it.categoryId == cat.id }
             if (mine.isNotEmpty()) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(Modifier.weight(1f)) {
@@ -472,23 +533,23 @@ fun ReportsScreen(vm: AppViewModel) {
         }
 
         Button(
-            onClick = { shareCsv(context, year, trips, categories, rates) },
+            onClick = { shareCsv(context, range, trips, categories, rates) },
             modifier = Modifier.fillMaxWidth()
-        ) { Text("Export $year as spreadsheet (CSV)") }
+        ) { Text("Export these dates as spreadsheet (CSV)") }
     }
 }
 
 private fun shareCsv(
     context: Context,
-    year: Int,
+    range: DateRange,
     trips: List<TripSummary>,
     categories: List<Category>,
     rates: List<Rate>
 ) {
     try {
         val dir = File(context.cacheDir, "exports").apply { mkdirs() }
-        val file = File(dir, "openmiles-$year.csv")
-        file.writeText(Csv.build(year, trips, categories, rates))
+        val file = File(dir, "openmiles-${range.from}-to-${range.to}.csv")
+        file.writeText(Csv.buildRange(range, trips, categories, rates))
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/csv"
