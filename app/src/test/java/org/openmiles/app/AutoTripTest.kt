@@ -20,10 +20,37 @@ class AutoTripTest {
         m.onFix(40.000, -75.0, min(0.0), 15f)
         m.onFix(40.010, -75.0, min(1.0), 18f)
         m.onFix(40.020, -75.0, min(2.0), 0f)
-        // Sits within a few meters for a while.
-        m.onFix(40.02001, -75.0, min(4.0), 0f)
-        assertEquals(Decision.KeepGoing, m.check(min(6.9)))
+        // Fixes keep arriving from the same spot (GPS wobble of a few meters).
+        var t = 2.0
+        while (t < 6.9) {
+            t += 0.1
+            m.onFix(40.02001, -75.0, min(t), 0f)
+            if (t < 6.95) assertEquals(Decision.KeepGoing, m.check(min(t)))
+        }
+        m.onFix(40.02002, -75.0, min(7.0), 0f)
         assertEquals(Decision.Parked(min(2.0)), m.check(min(7.0)))
+    }
+
+    @Test
+    fun aTunnelIsNotParking() {
+        val m = AutoTripMonitor(start)
+        m.onFix(40.000, -75.0, min(0.0), 25f)
+        m.onFix(40.010, -75.0, min(1.0), 25f)
+        // No fixes at all for 20 minutes: the old code called this parked after 5.
+        assertEquals(Decision.KeepGoing, m.check(min(6.0)))
+        assertEquals(Decision.KeepGoing, m.check(min(21.0)))
+        // Signal returns far away, and the drive carries on.
+        m.onFix(40.100, -75.0, min(21.0), 25f)
+        assertEquals(Decision.KeepGoing, m.check(min(22.0)))
+    }
+
+    @Test
+    fun gpsGoneForHalfAnHourEndsAtTheLastGoodFix() {
+        val m = AutoTripMonitor(start)
+        m.onFix(40.000, -75.0, min(0.0), 25f)
+        m.onFix(40.010, -75.0, min(3.0), 25f)
+        assertEquals(Decision.KeepGoing, m.check(min(32.9)))
+        assertEquals(Decision.GpsLost(min(3.0)), m.check(min(33.0)))
     }
 
     @Test
@@ -56,10 +83,19 @@ class AutoTripTest {
     }
 
     @Test
-    fun noGpsAtAllEndsAsNotADrive() {
+    fun noGpsAtAllWaitsThenGivesUp() {
         val m = AutoTripMonitor(start)
-        assertEquals(Decision.Parked(start), m.check(min(5.0)))
-        assertEquals(Decision.NotADrive, m.check(min(10.0)))
+        assertEquals(Decision.KeepGoing, m.check(min(10.0)))
+        assertEquals(Decision.GpsLost(start), m.check(min(30.0)))
+    }
+
+    @Test
+    fun aDriveThatStartsInAGarageIsNotCalledAWalk() {
+        val m = AutoTripMonitor(start)
+        // 12 minutes with no GPS while leaving a garage, then real driving.
+        m.onFix(40.000, -75.0, min(12.0), 20f)
+        m.onFix(40.010, -75.0, min(13.0), 20f)
+        assertEquals(Decision.KeepGoing, m.check(min(13.0)))
     }
 
     @Test

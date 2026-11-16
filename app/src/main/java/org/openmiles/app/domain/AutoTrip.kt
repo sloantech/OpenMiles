@@ -3,9 +3,11 @@ package org.openmiles.app.domain
 /**
  * Decides when an automatically started drive is over. It holds no Android code, so it can be tested.
  *
- *  - Parked: the phone has stayed within 100 m of one spot for 5 minutes. The drive ends at the
- *    moment it stopped moving, not 5 minutes later.
- *  - Not a drive: 10 minutes have passed and the phone never went faster than 15 mph. This catches
+ *  - Parked: GPS fixes show the phone stayed within 100 m of one spot for 5 minutes. Silence is
+ *    not proof of parking (a tunnel or garage also goes silent), so this needs real fixes.
+ *    The drive ends at the moment it stopped moving, not 5 minutes later.
+ *  - GPS lost: no usable fix for 30 minutes. The drive ends at the last good fix.
+ *  - Not a drive: 10 minutes of GPS and the phone never went faster than 15 mph. This catches
  *    walks that set off the parking fence. Those are thrown away.
  */
 class AutoTripMonitor(private val startMs: Long) {
@@ -13,6 +15,7 @@ class AutoTripMonitor(private val startMs: Long) {
         object KeepGoing : Decision()
         object NotADrive : Decision()
         data class Parked(val endMs: Long) : Decision()
+        data class GpsLost(val endMs: Long) : Decision()
     }
 
     private var anchorLat: Double? = null
@@ -22,11 +25,19 @@ class AutoTripMonitor(private val startMs: Long) {
     var lastMovedMs: Long = startMs
         private set
 
+    /** Time of the first and the latest usable fix, or null before any. */
+    var firstFixMs: Long? = null
+        private set
+    var lastFixMs: Long? = null
+        private set
+
     var maxSpeedMps: Double = 0.0
         private set
 
     /** Feed every fix that is accurate enough. [speedMps] is the phone's own speed, if it gave one. */
     fun onFix(lat: Double, lng: Double, timeMs: Long, speedMps: Float?) {
+        if (firstFixMs == null) firstFixMs = timeMs
+        lastFixMs = maxOf(lastFixMs ?: timeMs, timeMs)
         val aLat = anchorLat
         if (aLat == null) {
             anchorLat = lat
@@ -58,8 +69,16 @@ class AutoTripMonitor(private val startMs: Long) {
     }
 
     fun check(nowMs: Long): Decision {
-        if (maxSpeedMps < DRIVE_SPEED_MPS && nowMs - startMs >= NEVER_DROVE_MS) return Decision.NotADrive
-        if (nowMs - lastMovedMs >= STATIONARY_MS) return Decision.Parked(lastMovedMs)
+        val first = firstFixMs
+        val last = lastFixMs
+        if (last == null || first == null) {
+            // No usable GPS at all yet. Wait, but not forever.
+            return if (nowMs - startMs >= GPS_LOST_MS) Decision.GpsLost(startMs) else Decision.KeepGoing
+        }
+        if (nowMs - last >= GPS_LOST_MS) return Decision.GpsLost(last)
+        if (maxSpeedMps < DRIVE_SPEED_MPS && last - first >= NEVER_DROVE_MS) return Decision.NotADrive
+        // Parked only when fixes kept arriving in one spot for the whole wait.
+        if (last - lastMovedMs >= STATIONARY_MS) return Decision.Parked(lastMovedMs)
         return Decision.KeepGoing
     }
 
@@ -67,6 +86,7 @@ class AutoTripMonitor(private val startMs: Long) {
         const val MOVE_RADIUS_M = 100.0
         const val STATIONARY_MS = 5 * 60_000L
         const val NEVER_DROVE_MS = 10 * 60_000L
+        const val GPS_LOST_MS = 30 * 60_000L
         /** 15 mph. Walking is about 3 mph. */
         const val DRIVE_SPEED_MPS = 6.7
         const val MAX_SPEED_MPS = 70.0

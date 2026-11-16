@@ -250,6 +250,14 @@ private fun RecordCard(
                     fontWeight = FontWeight.Bold
                 )
                 Text("Started at ${Calc.fmtTime(live.startTime)}")
+                if (live.gpsWeak) {
+                    Text(
+                        "No GPS signal right now. Recording continues. The gap is counted in a " +
+                            "straight line when the signal returns.",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
                 Button(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Stop drive") }
             } else {

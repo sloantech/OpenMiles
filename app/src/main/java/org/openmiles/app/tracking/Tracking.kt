@@ -45,7 +45,9 @@ data class LiveTrip(
     val meters: Double = 0.0,
     val points: Int = 0,
     /** True when the drive was started by automatic detection. */
-    val auto: Boolean = false
+    val auto: Boolean = false,
+    /** True when no usable GPS fix has arrived for a while (tunnel, garage, phone in a bag). */
+    val gpsWeak: Boolean = false
 )
 
 /** A finished drive, ready to save, and where the car ended up. */
@@ -65,15 +67,18 @@ object TrackingState {
     private val recorder = TripRecorder()
     private var monitor: AutoTripMonitor? = null
     private var seed: TripRecorder.Fix? = null
+    private var lastGoodFixMs: Long = 0L
 
     /** Farthest the parking spot may be from the first GPS fix and still count as the start. */
     private const val SEED_MAX_M = 2_000.0
+    private const val GPS_WEAK_MS = 45_000L
 
     @Synchronized
     fun begin(now: Long, auto: Boolean, parkedAt: TripRecorder.Fix?) {
         recorder.reset()
         monitor = if (auto) AutoTripMonitor(now) else null
         seed = if (auto) parkedAt else null
+        lastGoodFixMs = now
         _live.value = LiveTrip(active = true, startTime = now, auto = auto)
     }
 
@@ -88,6 +93,8 @@ object TrackingState {
         val fix = TripRecorder.Fix(loc.latitude, loc.longitude, time, accuracy)
         val goodEnough = accuracy == null || accuracy <= TripRecorder.MAX_ACCURACY_M
         if (!goodEnough) return
+        lastGoodFixMs = maxOf(lastGoodFixMs, time)
+        if (_live.value.gpsWeak) _live.value = _live.value.copy(gpsWeak = false)
 
         monitor?.onFix(fix.lat, fix.lng, time, if (loc.hasSpeed()) loc.speed else null)
 
@@ -104,6 +111,14 @@ object TrackingState {
         if (recorder.add(fix)) {
             _live.value = _live.value.copy(meters = recorder.meters, points = recorder.pointCount)
         }
+    }
+
+    /** Shows a "no GPS signal" note on screen when fixes stop arriving. */
+    @Synchronized
+    fun updateGpsStatus(now: Long) {
+        if (!_live.value.active) return
+        val weak = now - lastGoodFixMs >= GPS_WEAK_MS
+        if (weak != _live.value.gpsWeak) _live.value = _live.value.copy(gpsWeak = weak)
     }
 
     /** For automatic drives only: should the drive end now? */
@@ -131,7 +146,12 @@ object TrackingState {
      * that turned out to be a walk). A drive the person stopped themselves uses the manual rule.
      */
     @Synchronized
-    fun finish(now: Long, endMs: Long? = null, userStopped: Boolean = false): FinishedTrip? {
+    fun finish(
+        now: Long,
+        endMs: Long? = null,
+        userStopped: Boolean = false,
+        knowWhereParked: Boolean = true
+    ): FinishedTrip? {
         val state = _live.value
         val draft = if (state.active) {
             Draft(
@@ -145,7 +165,8 @@ object TrackingState {
         } else {
             null
         }
-        val parkedAt = recorder.lastFix
+        // After GPS was lost, the last fix is not where the car is, so don't claim it is.
+        val parkedAt = if (knowWhereParked) recorder.lastFix else null
         recorder.reset()
         monitor = null
         seed = null
@@ -218,9 +239,9 @@ class TrackingService : Service() {
 
             val now = System.currentTimeMillis()
             TrackingState.begin(now, auto, if (auto) AutoDetect.parkedAt(this) else null)
-            val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5_000L)
-                .setMinUpdateDistanceMeters(10f)
-                .build()
+            // No distance filter: fixes keep coming while parked, which is how a real stop is
+            // told apart from a lost signal. Tiny moves are still ignored by TripRecorder.
+            val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5_000L).build()
             try {
                 client.requestLocationUpdates(request, callback, Looper.getMainLooper())
             } catch (e: SecurityException) {
@@ -245,9 +266,16 @@ class TrackingService : Service() {
                 val now = System.currentTimeMillis()
                 val draft = TrackingState.snapshot(now) ?: break
                 DraftStore.write(appContext, draft)
+                TrackingState.updateGpsStatus(now)
                 when (val decision = TrackingState.checkAuto(now)) {
                     is AutoTripMonitor.Decision.Parked -> {
                         withContext(Dispatchers.Main) { stopAndSave(decision.endMs, userStopped = false) }
+                        break
+                    }
+                    is AutoTripMonitor.Decision.GpsLost -> {
+                        withContext(Dispatchers.Main) {
+                            stopAndSave(decision.endMs, userStopped = false, gpsLost = true)
+                        }
                         break
                     }
                     AutoTripMonitor.Decision.NotADrive -> {
@@ -260,11 +288,13 @@ class TrackingService : Service() {
         }
     }
 
-    private fun stopAndSave(endMs: Long?, userStopped: Boolean) {
+    private fun stopAndSave(endMs: Long?, userStopped: Boolean, gpsLost: Boolean = false) {
         ticker?.cancel()
         ticker = null
         client.removeLocationUpdates(callback)
-        val finished = TrackingState.finish(System.currentTimeMillis(), endMs, userStopped)
+        val finished = TrackingState.finish(
+            System.currentTimeMillis(), endMs, userStopped, knowWhereParked = !gpsLost
+        )
         stopForeground(STOP_FOREGROUND_REMOVE)
         val appContext = applicationContext
         scope.launch {
@@ -281,6 +311,8 @@ class TrackingService : Service() {
                     // Remember where the car is, so the next drive can be noticed quickly.
                     AutoDetect.onParked(appContext, finished.parkedAt)
                 }
+                // If GPS was lost, the old parking spot is no longer trustworthy.
+                if (gpsLost) AutoDetect.forgetParking(appContext)
                 DraftStore.clear(appContext)
             } finally {
                 // Always release the service, even if saving failed.

@@ -130,6 +130,20 @@ object AutoDetect {
         if (isEnabled(context) && hasAllPermissions(context)) setFence(context, fix)
     }
 
+    /** Drops the saved parking spot and its fence, when it can no longer be trusted. */
+    fun forgetParking(context: Context) {
+        prefs(context).edit()
+            .remove(KEY_PARK_LAT).remove(KEY_PARK_LNG).remove(KEY_PARK_TIME)
+            .apply()
+        try {
+            LocationServices.getGeofencingClient(context).removeGeofences(listOf(FENCE_ID))
+        } catch (e: SecurityException) {
+            // The permission is already gone, so Android has removed the fence.
+        } catch (e: Exception) {
+            // Nothing was registered.
+        }
+    }
+
     fun parkedAt(context: Context): TripRecorder.Fix? {
         val p = prefs(context)
         if (!p.contains(KEY_PARK_TIME)) return null
