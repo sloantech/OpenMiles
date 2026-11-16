@@ -138,25 +138,30 @@ fun DrivesScreen(vm: AppViewModel) {
     val live by vm.live.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var editingId by remember { mutableStateOf<Long?>(null) }
-    var permissionDenied by remember { mutableStateOf(false) }
+    var permissionProblem by remember { mutableStateOf<String?>(null) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
         val fine = result[Manifest.permission.ACCESS_FINE_LOCATION] == true
         val coarse = result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (fine || coarse) {
-            permissionDenied = false
-            TrackingService.start(context)
-        } else {
-            permissionDenied = true
+        permissionProblem = when {
+            fine -> null
+            // Approximate location is only accurate to about a mile, so every reading
+            // would be rejected and the drive thrown away. Ask for precise instead.
+            coarse -> "OpenMiles needs Precise location to measure miles. " +
+                "In your phone's Settings, open Apps, OpenMiles, Permissions, Location, " +
+                "and turn on Use precise location."
+            else -> "OpenMiles needs location permission to record drives. " +
+                "Turn it on in your phone's Settings, under Apps, OpenMiles, Permissions."
         }
+        if (fine) TrackingService.start(context)
     }
 
     Column(Modifier.fillMaxSize()) {
         RecordCard(
             live = live,
-            permissionDenied = permissionDenied,
+            permissionProblem = permissionProblem,
             onStart = {
                 val perms = mutableListOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -217,7 +222,7 @@ fun DrivesScreen(vm: AppViewModel) {
 @Composable
 private fun RecordCard(
     live: LiveTrip,
-    permissionDenied: Boolean,
+    permissionProblem: String?,
     onStart: () -> Unit,
     onStop: () -> Unit
 ) {
@@ -238,13 +243,9 @@ private fun RecordCard(
                 Button(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Stop drive") }
             } else {
                 Text("Ready when you are", style = MaterialTheme.typography.titleMedium)
-                if (permissionDenied) {
+                if (permissionProblem != null) {
                     Spacer(Modifier.height(8.dp))
-                    Text(
-                        "OpenMiles needs location permission to record drives. " +
-                            "Turn it on in your phone's Settings, under Apps, OpenMiles, Permissions.",
-                        color = MaterialTheme.colorScheme.error
-                    )
+                    Text(permissionProblem, color = MaterialTheme.colorScheme.error)
                 }
                 Spacer(Modifier.height(12.dp))
                 Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) { Text("Start drive") }
