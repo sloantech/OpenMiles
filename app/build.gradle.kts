@@ -17,9 +17,27 @@ android {
         versionName = "0.1.0"
     }
 
+    // The permanent signing key is never stored in the code. The build reads it from
+    // environment variables that GitHub fills in from its encrypted secrets. Without them
+    // (for example on a copy of this project), the release build is simply left unsigned.
+    val keystorePath: String? = System.getenv("OPENMILES_KEYSTORE_PATH")
+    signingConfigs {
+        if (!keystorePath.isNullOrBlank()) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("OPENMILES_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("OPENMILES_KEY_ALIAS")
+                keyPassword = System.getenv("OPENMILES_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (!keystorePath.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

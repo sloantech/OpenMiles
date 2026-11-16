@@ -102,6 +102,39 @@ jobs:
           name: OpenMiles-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Build the signed release app (only once the signing key is set up)
+        env:
+          KEYSTORE_B64: ${{ secrets.OPENMILES_KEYSTORE_BASE64 }}
+          OPENMILES_KEYSTORE_PASSWORD: ${{ secrets.OPENMILES_KEYSTORE_PASSWORD }}
+          OPENMILES_KEY_ALIAS: ${{ secrets.OPENMILES_KEY_ALIAS }}
+          OPENMILES_KEY_PASSWORD: ${{ secrets.OPENMILES_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "No signing key set up yet, so no release app is built. This is fine."
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          export OPENMILES_KEYSTORE_PATH="$RUNNER_TEMP/release.jks"
+          ./gradlew assembleRelease --stacktrace
+          rm -f "$RUNNER_TEMP/release.jks"
+          APK=app/build/outputs/apk/release/app-release.apk
+          test -f "$APK" || { echo "FAIL: signed release app was not produced"; exit 1; }
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose --print-certs "$APK" | grep -E "Verifies|Number of signers|SHA-256"
+          if "$BT/aapt2" dump badging "$APK" | grep -q "application-debuggable"; then
+            echo "FAIL: the release app is debuggable"
+            exit 1
+          fi
+          echo "OK: release app is signed with the permanent key and is not debuggable"
+          echo "RELEASE_BUILT=true" >> "$GITHUB_ENV"
+
+      - name: Save the signed release app
+        if: env.RELEASE_BUILT == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenMiles-release-apk
+          path: app/build/outputs/apk/release/app-release.apk
+
       - name: Save the test and code-check reports
         if: always()
         uses: actions/upload-artifact@v4
