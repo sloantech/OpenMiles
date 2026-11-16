@@ -37,6 +37,7 @@ import org.openmiles.app.domain.AutoTripMonitor
 import org.openmiles.app.domain.Draft
 import org.openmiles.app.domain.Geo
 import org.openmiles.app.domain.TripRecorder
+import java.util.Locale
 
 /** What the screen shows while a drive is being recorded. */
 data class LiveTrip(
@@ -113,12 +114,14 @@ object TrackingState {
         }
     }
 
-    /** Shows a "no GPS signal" note on screen when fixes stop arriving. */
+    /** Shows a "no GPS signal" note on screen when fixes stop arriving. Returns true if it changed. */
     @Synchronized
-    fun updateGpsStatus(now: Long) {
-        if (!_live.value.active) return
+    fun updateGpsStatus(now: Long): Boolean {
+        if (!_live.value.active) return false
         val weak = now - lastGoodFixMs >= GPS_WEAK_MS
-        if (weak != _live.value.gpsWeak) _live.value = _live.value.copy(gpsWeak = weak)
+        if (weak == _live.value.gpsWeak) return false
+        _live.value = _live.value.copy(gpsWeak = weak)
+        return true
     }
 
     /** For automatic drives only: should the drive end now? */
@@ -196,12 +199,12 @@ class TrackingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                stopAndSave(endMs = null, userStopped = true)
+                stopAndSave(endMs = null, userStopped = true, reason = "you tapped Stop")
                 return START_NOT_STICKY
             }
             ACTION_AUTO_STOP -> {
                 if (TrackingState.isAutoActive()) {
-                    stopAndSave(endMs = null, userStopped = false)
+                    stopAndSave(endMs = null, userStopped = false, reason = "you left the vehicle")
                 } else if (!TrackingState.live.value.active) {
                     stopSelf()
                 }
@@ -220,6 +223,7 @@ class TrackingService : Service() {
             )
         } catch (e: Exception) {
             // Android refused (for example, a permission was taken away). Record nothing.
+            DiagLog.add(this, "Android refused to start recording: ${e.javaClass.simpleName}")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -239,6 +243,7 @@ class TrackingService : Service() {
 
             val now = System.currentTimeMillis()
             TrackingState.begin(now, auto, if (auto) AutoDetect.parkedAt(this) else null)
+            DiagLog.add(this, if (auto) "Recording started automatically" else "Recording started (you tapped Start)")
             // No distance filter: fixes keep coming while parked, which is how a real stop is
             // told apart from a lost signal. Tiny moves are still ignored by TripRecorder.
             val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5_000L).build()
@@ -246,6 +251,7 @@ class TrackingService : Service() {
                 client.requestLocationUpdates(request, callback, Looper.getMainLooper())
             } catch (e: SecurityException) {
                 // Permission was taken away. Nothing was recorded, so just stop.
+                DiagLog.add(this, "GPS blocked: location permission missing")
                 TrackingState.finish(System.currentTimeMillis())
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -266,20 +272,32 @@ class TrackingService : Service() {
                 val now = System.currentTimeMillis()
                 val draft = TrackingState.snapshot(now) ?: break
                 DraftStore.write(appContext, draft)
-                TrackingState.updateGpsStatus(now)
+                if (TrackingState.updateGpsStatus(now)) {
+                    DiagLog.add(
+                        appContext,
+                        if (TrackingState.live.value.gpsWeak) "GPS signal lost" else "GPS signal back"
+                    )
+                }
                 when (val decision = TrackingState.checkAuto(now)) {
                     is AutoTripMonitor.Decision.Parked -> {
-                        withContext(Dispatchers.Main) { stopAndSave(decision.endMs, userStopped = false) }
+                        withContext(Dispatchers.Main) {
+                            stopAndSave(decision.endMs, userStopped = false, reason = "parked for 5 minutes")
+                        }
                         break
                     }
                     is AutoTripMonitor.Decision.GpsLost -> {
                         withContext(Dispatchers.Main) {
-                            stopAndSave(decision.endMs, userStopped = false, gpsLost = true)
+                            stopAndSave(
+                                decision.endMs, userStopped = false, gpsLost = true,
+                                reason = "no GPS for 30 minutes"
+                            )
                         }
                         break
                     }
                     AutoTripMonitor.Decision.NotADrive -> {
-                        withContext(Dispatchers.Main) { stopAndSave(endMs = null, userStopped = false) }
+                        withContext(Dispatchers.Main) {
+                            stopAndSave(endMs = null, userStopped = false, reason = "never faster than 15 mph")
+                        }
                         break
                     }
                     else -> Unit
@@ -288,14 +306,32 @@ class TrackingService : Service() {
         }
     }
 
-    private fun stopAndSave(endMs: Long?, userStopped: Boolean, gpsLost: Boolean = false) {
+    private fun stopAndSave(
+        endMs: Long?,
+        userStopped: Boolean,
+        reason: String,
+        gpsLost: Boolean = false
+    ) {
         ticker?.cancel()
         ticker = null
         client.removeLocationUpdates(callback)
+        val before = TrackingState.snapshot(System.currentTimeMillis())
         val finished = TrackingState.finish(
             System.currentTimeMillis(), endMs, userStopped, knowWhereParked = !gpsLost
         )
         stopForeground(STOP_FOREGROUND_REMOVE)
+        if (before != null) {
+            val miles = before.meters / 1609.344
+            val result = when {
+                finished != null -> String.format(Locale.US, "saved, %.1f mi", finished.meters / 1609.344)
+                before.auto && !userStopped && before.meters < AutoTripMonitor.MIN_AUTO_TRIP_M ->
+                    String.format(Locale.US, "not kept, only %.2f mi", miles)
+                before.auto && !userStopped ->
+                    String.format(Locale.US, "not kept, top speed %.0f mph", before.maxSpeedMps * 2.23694)
+                else -> String.format(Locale.US, "not kept, only %.2f mi", miles)
+            }
+            DiagLog.add(this, "Drive ended ($reason): $result")
+        }
         val appContext = applicationContext
         scope.launch {
             try {
@@ -377,6 +413,7 @@ class TrackingService : Service() {
                 )
             } catch (e: Exception) {
                 // Not allowed right now (for example, a battery saver). The next signal tries again.
+                DiagLog.add(context, "Android blocked the automatic start: ${e.javaClass.simpleName}")
             }
         }
 

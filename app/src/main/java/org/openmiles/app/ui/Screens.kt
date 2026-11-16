@@ -95,6 +95,7 @@ import org.openmiles.app.domain.Csv
 import org.openmiles.app.domain.DateRange
 import org.openmiles.app.domain.Validation
 import org.openmiles.app.tracking.AutoDetect
+import org.openmiles.app.tracking.DiagLog
 import org.openmiles.app.tracking.LiveTrip
 import org.openmiles.app.tracking.TrackingService
 
@@ -604,6 +605,8 @@ fun SettingsScreen(vm: AppViewModel) {
     ) {
         item {
             AutoDetectSection()
+            Spacer(Modifier.height(8.dp))
+            DetectionLogSection()
             Spacer(Modifier.height(16.dp))
         }
         item { Text("Categories", style = MaterialTheme.typography.titleLarge) }
@@ -849,6 +852,80 @@ private fun AutoDetectSection() {
                 TextButton(onClick = { explainBackground = false }) { Text("Not now") }
             }
         )
+    }
+}
+
+@Composable
+private fun DetectionLogSection() {
+    val context = LocalContext.current
+    var showing by remember { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
+
+    Text("Detection log", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "A private record of when drives started and stopped, and why. Times and events only, " +
+            "no locations. It stays on this phone unless you share it.",
+        style = MaterialTheme.typography.bodySmall
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { showing = true }) { Text("View") }
+        OutlinedButton(onClick = { shareLog(context) }) { Text("Share") }
+        TextButton(onClick = { confirmClear = true }) {
+            Text("Clear", color = MaterialTheme.colorScheme.error)
+        }
+    }
+
+    if (showing) {
+        val lines = remember { DiagLog.read(context) }
+        AlertDialog(
+            onDismissRequest = { showing = false },
+            title = { Text("Detection log") },
+            text = {
+                Column(Modifier.height(420.dp).verticalScroll(rememberScrollState())) {
+                    if (lines.isEmpty()) {
+                        Text("Nothing yet. Events show up here once auto-detect is on or a drive is recorded.")
+                    } else {
+                        lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showing = false }) { Text("Close") } }
+        )
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Clear the log?") },
+            text = { Text("This deletes the detection log. Your drives are not affected.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    DiagLog.clear(context)
+                    confirmClear = false
+                }) { Text("Clear", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } }
+        )
+    }
+}
+
+private fun shareLog(context: Context) {
+    try {
+        val dir = File(context.cacheDir, "exports").apply { mkdirs() }
+        dir.listFiles()?.forEach { it.delete() }
+        val file = File(dir, "openmiles-detection-log.txt")
+        val body = DiagLog.read(context, max = 3_000).joinToString("\n")
+        file.writeText(DiagLog.header(context) + body.ifEmpty { "(no events yet)" } + "\n")
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newRawUri("OpenMiles detection log", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(send, "Share detection log"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Could not share the log.", Toast.LENGTH_LONG).show()
     }
 }
 
