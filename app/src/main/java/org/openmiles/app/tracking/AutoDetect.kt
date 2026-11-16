@@ -81,6 +81,8 @@ object AutoDetect {
         try {
             ActivityRecognition.getClient(context)
                 .removeActivityTransitionUpdates(pendingIntent(context, ACTION_TRANSITION))
+        } catch (e: SecurityException) {
+            // The permission is already gone, so Android has stopped the updates.
         } catch (e: Exception) {
             // Nothing was registered.
         }
