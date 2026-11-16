@@ -81,6 +81,7 @@ import org.openmiles.app.data.Rate
 import org.openmiles.app.data.TripSummary
 import org.openmiles.app.domain.Calc
 import org.openmiles.app.domain.DateRange
+import org.openmiles.app.domain.Validation
 import org.openmiles.app.domain.Csv
 import org.openmiles.app.tracking.LiveTrip
 import org.openmiles.app.tracking.TrackingService
@@ -548,6 +549,8 @@ private fun shareCsv(
 ) {
     try {
         val dir = File(context.cacheDir, "exports").apply { mkdirs() }
+        // Remove earlier exports so old copies of the log don't pile up on the phone.
+        dir.listFiles()?.forEach { it.delete() }
         val file = File(dir, "openmiles-${range.from}-to-${range.to}.csv")
         file.writeText(Csv.buildRange(range, trips, categories, rates))
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
@@ -661,7 +664,7 @@ fun SettingsScreen(vm: AppViewModel) {
 
 private fun openLink(context: Context, url: String) {
     // Only web links are opened, whatever is typed into AppConfig.
-    if (!url.startsWith("https://")) return
+    if (!Validation.isSafeWebLink(url)) return
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     } catch (e: Exception) {
@@ -716,11 +719,10 @@ private fun AddRateDialog(onAdd: (String, String, Double) -> Unit, onClose: () -
     var kind by remember { mutableStateOf(Kind.BUSINESS) }
     var date by remember { mutableStateOf(LocalDate.now().toString()) }
     var dollars by remember { mutableStateOf("") }
-    val dateOk = runCatching { LocalDate.parse(date) }.isSuccess
+    val dateOk = Validation.parseDay(date) != null
     // Accept a comma as the decimal mark too, since some phones use one.
     val amount = dollars.trim().replace(',', '.').toDoubleOrNull()
-    // A rate above $10 per mile is almost certainly a typo, like 76 instead of 0.76.
-    val amountOk = amount != null && amount >= 0.0 && amount <= 10.0
+    val amountOk = amount != null && Validation.isValidRate(amount)
     AlertDialog(
         onDismissRequest = onClose,
         title = { Text("New rate") },

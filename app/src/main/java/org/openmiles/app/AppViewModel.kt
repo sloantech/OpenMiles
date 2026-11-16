@@ -10,8 +10,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.openmiles.app.data.AppDatabase
 import org.openmiles.app.data.Category
+import org.openmiles.app.data.Kind
 import org.openmiles.app.data.Rate
 import org.openmiles.app.data.Seed
+import org.openmiles.app.domain.Validation
 import org.openmiles.app.tracking.LiveTrip
 import org.openmiles.app.tracking.TrackingState
 
@@ -71,12 +73,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun addRate(kind: String, effectiveFrom: String, dollarsPerMile: Double) {
+        // The screen checks these too, but the data layer never trusts the screen.
+        val day = Validation.parseDay(effectiveFrom) ?: return
+        if (!Validation.isValidRate(dollarsPerMile)) return
+        if (kind != Kind.BUSINESS && kind != Kind.MEDICAL && kind != Kind.CHARITY) return
+        val startDate = day.toString()
         viewModelScope.launch {
             db.withTransaction {
                 // Replace any rate that starts on the same date for the same kind.
-                db.rateDao().deleteFor(kind, effectiveFrom)
+                db.rateDao().deleteFor(kind, startDate)
                 db.rateDao().insert(
-                    Rate(kind = kind, effectiveFrom = effectiveFrom, dollarsPerMile = dollarsPerMile)
+                    Rate(kind = kind, effectiveFrom = startDate, dollarsPerMile = dollarsPerMile)
                 )
             }
         }

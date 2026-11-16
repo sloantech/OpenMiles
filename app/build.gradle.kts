@@ -32,6 +32,20 @@ android {
         jvmTarget = "17"
     }
 
+    // Security-related lint checks are errors, so the build fails if any of them ever fires.
+    lint {
+        abortOnError = true
+        checkDependencies = true
+        error += listOf(
+            "ExportedContentProvider", "ExportedReceiver", "ExportedService",
+            "GrantAllUris", "UnsafeIntentLaunch", "UnprotectedSMSBroadcastReceiver",
+            "UnsafeProtectedBroadcastReceiver", "HardcodedDebugMode", "SetJavaScriptEnabled",
+            "AllowBackup", "PendingIntentMutability", "WorldReadableFiles", "WorldWriteableFiles",
+            "SecureRandom", "TrustAllX509TrustManager", "MissingPermission",
+            "ProtectedPermissions", "InsecureBaseConfiguration", "UnsafeNativeCodeLocation"
+        )
+    }
+
     buildFeatures {
         compose = true
     }

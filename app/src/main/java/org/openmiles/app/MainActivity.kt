@@ -14,6 +14,8 @@ import org.openmiles.app.ui.OpenMilesApp
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Spreadsheet exports are temporary. Clear any left over from last time.
+        java.io.File(cacheDir, "exports").deleteRecursively()
         setContent {
             OpenMilesTheme {
                 val vm: AppViewModel = viewModel()

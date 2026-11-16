@@ -60,6 +60,42 @@ jobs:
           fi
           echo "OK: no internet permission"
 
+      - name: Dependency security scan (known vulnerabilities, OSV database)
+        run: |
+          ./gradlew :app:dependencies --configuration releaseRuntimeClasspath > deps.txt
+          python3 - <<'PY'
+          import json, re, urllib.request
+          pat = re.compile(r"([\w.\-]+):([\w.\-]+)(?::([\w.\-]+))?(?: -> ([\w.\-]+))?")
+          found = {}
+          for line in open("deps.txt"):
+              if "---" not in line or "project :" in line:
+                  continue
+              m = pat.search(line.split("---", 1)[1])
+              if not m:
+                  continue
+              group, art, declared, resolved = m.groups()
+              version = resolved or declared
+              if version:
+                  found[(group, art, version)] = 1
+          deps = sorted(found)
+          print(f"Dependencies checked: {len(deps)}")
+          if len(deps) < 20:
+              raise SystemExit("Too few dependencies found. The scan did not read the list correctly.")
+          queries = [{"package": {"name": f"{g}:{a}", "ecosystem": "Maven"}, "version": v} for g, a, v in deps]
+          req = urllib.request.Request(
+              "https://api.osv.dev/v1/querybatch",
+              data=json.dumps({"queries": queries}).encode(),
+              headers={"Content-Type": "application/json"},
+          )
+          results = json.load(urllib.request.urlopen(req, timeout=60))["results"]
+          bad = [(d, r["vulns"]) for d, r in zip(deps, results) if r.get("vulns")]
+          for (g, a, v), vulns in bad:
+              print(f"VULNERABLE: {g}:{a}:{v} -> " + ", ".join(x["id"] for x in vulns))
+          if bad:
+              raise SystemExit(f"{len(bad)} dependencies have known vulnerabilities")
+          print("OK: no known vulnerabilities in the dependency list")
+          PY
+
       - name: Save the installable file
         uses: actions/upload-artifact@v4
         with:
