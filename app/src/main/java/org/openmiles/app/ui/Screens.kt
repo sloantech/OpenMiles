@@ -6,6 +6,7 @@ import android.Manifest
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.widget.Toast
@@ -52,11 +53,13 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -71,8 +74,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.io.File
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 import org.openmiles.app.AppConfig
 import org.openmiles.app.AppViewModel
 import org.openmiles.app.data.Category
@@ -80,15 +91,12 @@ import org.openmiles.app.data.Kind
 import org.openmiles.app.data.Rate
 import org.openmiles.app.data.TripSummary
 import org.openmiles.app.domain.Calc
+import org.openmiles.app.domain.Csv
 import org.openmiles.app.domain.DateRange
 import org.openmiles.app.domain.Validation
-import org.openmiles.app.domain.Csv
+import org.openmiles.app.tracking.AutoDetect
 import org.openmiles.app.tracking.LiveTrip
 import org.openmiles.app.tracking.TrackingService
-import java.io.File
-import java.time.Instant
-import java.time.LocalDate
-import java.time.ZoneOffset
 
 // ---------------------------------------------------------------------------
 // App shell with three tabs
@@ -232,7 +240,10 @@ private fun RecordCard(
     ) {
         Column(Modifier.padding(16.dp)) {
             if (live.active) {
-                Text("Recording your drive", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    if (live.auto) "Drive detected. Recording." else "Recording your drive",
+                    style = MaterialTheme.typography.titleMedium
+                )
                 Text(
                     Calc.fmtMiles(live.meters),
                     style = MaterialTheme.typography.displaySmall,
@@ -583,6 +594,10 @@ fun SettingsScreen(vm: AppViewModel) {
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        item {
+            AutoDetectSection()
+            Spacer(Modifier.height(16.dp))
+        }
         item { Text("Categories", style = MaterialTheme.typography.titleLarge) }
         items(categories, key = { "c${it.id}" }) { cat ->
             Row(
@@ -660,6 +675,174 @@ fun SettingsScreen(vm: AppViewModel) {
             onAdd = { kind, date, dollars -> vm.addRate(kind, date, dollars) },
             onClose = { showAddRate = false }
         )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Optional automatic drive detection (off unless the person turns it on)
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun AutoDetectSection() {
+    val context = LocalContext.current
+    var enabled by remember { mutableStateOf(AutoDetect.isEnabled(context)) }
+    var missing by remember { mutableStateOf(AutoDetect.missingPermissions(context)) }
+    var explainBackground by remember { mutableStateOf(false) }
+    var justTurnedOff by remember { mutableStateOf(false) }
+
+    fun refresh() {
+        missing = AutoDetect.missingPermissions(context)
+        enabled = AutoDetect.isEnabled(context)
+    }
+
+    // Permissions can change in the phone's Settings while the app is in the background.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refresh()
+                AutoDetect.register(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val backgroundLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { _ ->
+        if (AutoDetect.enable(context)) justTurnedOff = false
+        refresh()
+    }
+
+    val firstLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        refresh()
+        val fineOk = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!fineOk) return@rememberLauncherForActivityResult
+        if (Build.VERSION.SDK_INT >= 29 &&
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            explainBackground = true
+        } else if (AutoDetect.enable(context)) {
+            justTurnedOff = false
+            refresh()
+        }
+    }
+
+    Text("Automatic drive detection", style = MaterialTheme.typography.titleLarge)
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            "Start and stop drives on their own",
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge
+        )
+        Switch(
+            checked = enabled,
+            onCheckedChange = { on ->
+                if (on) {
+                    if (AutoDetect.enable(context)) {
+                        justTurnedOff = false
+                        refresh()
+                    } else {
+                        val perms = mutableListOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
+                        if (Build.VERSION.SDK_INT >= 29) perms.add(Manifest.permission.ACTIVITY_RECOGNITION)
+                        if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                        firstLauncher.launch(perms.toTypedArray())
+                    }
+                } else {
+                    AutoDetect.disable(context)
+                    justTurnedOff = true
+                    refresh()
+                }
+            }
+        )
+    }
+
+    when {
+        enabled && missing.isEmpty() -> Text(
+            "On. A notification shows whenever a drive is being recorded. " +
+                "You can still use Start drive and Stop drive yourself.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        enabled -> {
+            Text(
+                "Paused. These permissions are turned off: ${missing.joinToString(", ")}.",
+                color = MaterialTheme.colorScheme.error
+            )
+            TextButton(onClick = { openAppSettings(context) }) { Text("Open app settings") }
+        }
+        justTurnedOff -> {
+            Text(
+                "Off. Nothing runs in the background now. If you like, you can also change " +
+                    "Location back to \"Allow only while using the app\" in your phone's settings.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            TextButton(onClick = { openAppSettings(context) }) { Text("Open app settings") }
+        }
+        else -> Text(
+            "Off. Turn this on to record drives without tapping Start. It needs location " +
+                "\"Allow all the time\" and Physical activity. Nothing leaves your phone.",
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
+    if (enabled) {
+        Text(
+            "Tip: some phones (Samsung especially) stop apps in the background to save battery. " +
+                "If drives are missed, open app settings, then Battery, and choose Unrestricted.",
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
+
+    if (explainBackground) {
+        AlertDialog(
+            onDismissRequest = { explainBackground = false },
+            title = { Text("One more step") },
+            text = {
+                Text(
+                    "Android will open a settings page. Choose \"Allow all the time\" so OpenMiles " +
+                        "can notice a drive while the app is closed.\n\n" +
+                        "GPS only turns on when a drive is detected, and a notification always shows " +
+                        "while it records. Your drives never leave this phone."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    explainBackground = false
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        backgroundLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                    }
+                }) { Text("Continue") }
+            },
+            dismissButton = {
+                TextButton(onClick = { explainBackground = false }) { Text("Not now") }
+            }
+        )
+    }
+}
+
+private fun openAppSettings(context: Context) {
+    try {
+        context.startActivity(
+            Intent(
+                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.fromParts("package", context.packageName, null)
+            )
+        )
+    } catch (e: Exception) {
+        Toast.makeText(context, "Could not open settings.", Toast.LENGTH_LONG).show()
     }
 }
 

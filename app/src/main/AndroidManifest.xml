@@ -9,6 +9,17 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
+        Only used if the person turns on "Automatic drive detection" in Settings.
+        The app asks for these at that moment, never before.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission
+        android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION"
+        android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!--
         Privacy promise: OpenMiles never connects to the internet. This line removes the
         INTERNET permission even if a library we use asks for it. The build also checks it.
     -->
@@ -36,6 +47,22 @@
             android:name=".tracking.TrackingService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- Drive signals from Google Play services. Other apps cannot reach it. -->
+        <receiver
+            android:name=".tracking.DetectionReceiver"
+            android:exported="false" />
+
+        <!-- Turns detection back on after a restart or update. Only the system can send these. -->
+        <receiver
+            android:name=".tracking.BootReceiver"
+            android:exported="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.core.content.FileProvider"

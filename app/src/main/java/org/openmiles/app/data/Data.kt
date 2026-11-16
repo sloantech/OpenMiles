@@ -85,6 +85,9 @@ interface TripDao {
     @Insert
     suspend fun insert(trip: Trip): Long
 
+    @Query("SELECT COUNT(*) FROM trips WHERE startTime = :start")
+    suspend fun countStartingAt(start: Long): Int
+
     @Query("DELETE FROM trips WHERE id = :id")
     suspend fun deleteById(id: Long)
 

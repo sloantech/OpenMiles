@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -14,6 +15,8 @@ import org.openmiles.app.data.Kind
 import org.openmiles.app.data.Rate
 import org.openmiles.app.data.Seed
 import org.openmiles.app.domain.Validation
+import org.openmiles.app.tracking.AutoDetect
+import org.openmiles.app.tracking.DraftStore
 import org.openmiles.app.tracking.LiveTrip
 import org.openmiles.app.tracking.TrackingState
 
@@ -29,7 +32,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val live: StateFlow<LiveTrip> = TrackingState.live
 
     init {
-        viewModelScope.launch { Seed.run(db) }
+        viewModelScope.launch(Dispatchers.IO) {
+            Seed.run(db)
+            // Save a drive that was cut off when Android closed the app.
+            if (!TrackingState.live.value.active) {
+                DraftStore.take(app)?.let { DraftStore.saveRecovered(app, it) }
+            }
+        }
+        // Detection can be forgotten (for example after a phone update). Sign up again.
+        AutoDetect.register(app)
     }
 
     /** Swipe right or left: use the built-in category for that kind. */

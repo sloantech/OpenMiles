@@ -47,6 +47,9 @@ class TripRecorder {
 
     val pointCount: Int get() = points.size
 
+    /** The last fix that was used, or null if none yet. */
+    val lastFix: Fix? get() = last
+
     /** Returns true if the fix was used. */
     fun add(fix: Fix): Boolean {
         val accuracy = fix.accuracyM
