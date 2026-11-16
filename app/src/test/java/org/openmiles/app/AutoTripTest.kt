@@ -57,8 +57,9 @@ class AutoTripTest {
     fun aWalkIsNotADrive() {
         val m = AutoTripMonitor(start)
         // About 1.4 m/s, walking pace, moving steadily so it never looks parked.
-        for (i in 0..20) m.onFix(40.0 + i * 0.0004, -75.0, min(i * 0.5), 1.4f)
+        for (i in 0..19) m.onFix(40.0 + i * 0.0004, -75.0, min(i * 0.5), 1.4f)
         assertEquals(Decision.KeepGoing, m.check(min(9.9)))
+        m.onFix(40.0 + 20 * 0.0004, -75.0, min(10.0), 1.4f)
         assertEquals(Decision.NotADrive, m.check(min(10.0)))
         assertTrue(m.maxSpeedMps < AutoTripMonitor.DRIVE_SPEED_MPS)
     }
