@@ -45,12 +45,20 @@ If the build shows a red X, open it, copy the error text, and send it to Claude 
 
 - The app has **no internet permission**. It cannot send your drives anywhere. The build fails if that ever changes.
 - Drives are stored only in the app's private storage on your phone.
-- Location is used only while you are recording a drive, and a notification is always showing.
+- Location is used only while a drive is recording, and a notification is always showing.
+- **Automatic drive detection is optional and off by default.** Turn it on in Settings. Only then
+  does the app ask for "Allow all the time" location and Physical activity, which it needs to
+  notice a drive while the app is closed. GPS still only runs while a drive is recording.
+  Turning it off stops everything in the background.
 - The spreadsheet export is only shared when you tap Export, and only to the app you pick.
 
 ## Known limits of Phase 1
 
-- Recording is manual. If Android closes the app while a drive is recording, that drive is lost.
+- Automatic detection is new and needs real-world tuning. It may start a little late or miss
+  very short drives. Some phones (Samsung especially) block background apps: set OpenMiles to
+  Unrestricted battery if drives are missed.
+- A drive in progress is saved every 30 seconds, so if Android closes the app, at most the last
+  30 seconds are lost.
 - No map yet.
 - No backup. Auto-backup to Google is turned off on purpose so drives never leave the phone.
 - GPS distance is a straight-line sum between points, so it can read a little short on winding roads. Compare a few drives with your car's trip meter.

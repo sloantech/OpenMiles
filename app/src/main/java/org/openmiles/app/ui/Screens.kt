@@ -689,6 +689,7 @@ private fun AutoDetectSection() {
     var missing by remember { mutableStateOf(AutoDetect.missingPermissions(context)) }
     var explainBackground by remember { mutableStateOf(false) }
     var justTurnedOff by remember { mutableStateOf(false) }
+    var triedToTurnOn by remember { mutableStateOf(false) }
 
     fun refresh() {
         missing = AutoDetect.missingPermissions(context)
@@ -750,6 +751,7 @@ private fun AutoDetectSection() {
             checked = enabled,
             onCheckedChange = { on ->
                 if (on) {
+                    triedToTurnOn = true
                     if (AutoDetect.enable(context)) {
                         justTurnedOff = false
                         refresh()
@@ -764,6 +766,7 @@ private fun AutoDetectSection() {
                     }
                 } else {
                     AutoDetect.disable(context)
+                    triedToTurnOn = false
                     justTurnedOff = true
                     refresh()
                 }
@@ -780,6 +783,14 @@ private fun AutoDetectSection() {
         enabled -> {
             Text(
                 "Paused. These permissions are turned off: ${missing.joinToString(", ")}.",
+                color = MaterialTheme.colorScheme.error
+            )
+            TextButton(onClick = { openAppSettings(context) }) { Text("Open app settings") }
+        }
+        triedToTurnOn && missing.isNotEmpty() -> {
+            Text(
+                "Could not turn on. Still needed: ${missing.joinToString(", ")}. " +
+                    "You can turn these on in app settings, under Permissions.",
                 color = MaterialTheme.colorScheme.error
             )
             TextButton(onClick = { openAppSettings(context) }) { Text("Open app settings") }
