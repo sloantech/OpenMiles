@@ -138,6 +138,30 @@ fun OpenMilesApp(vm: AppViewModel) {
         "Reports" to HighwayIcons.Chart,
         "Settings" to HighwayIcons.Gear
     )
+    val ctx = LocalContext.current
+    val introPrefs = remember { ctx.getSharedPreferences("intro", Context.MODE_PRIVATE) }
+    var showIntro by remember { mutableStateOf(!introPrefs.getBoolean("seen_disclaimer", false)) }
+    if (showIntro) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Before you start") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("OpenMiles is free, beta software, provided as is with no warranty.")
+                    Text("Mileage and values are estimates, not tax advice. Check them against your odometer and talk to a tax professional.")
+                    Text("Your drives stay only on this phone. Make backups in Settings.")
+                    Text("Don't use your phone while driving. Set things up before you go.")
+                    TextButton(onClick = { openLink(ctx, AppConfig.PRIVACY_URL) }) { Text("Read the full privacy policy and disclaimer") }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    introPrefs.edit().putBoolean("seen_disclaimer", true).apply()
+                    showIntro = false
+                }) { Text("I understand") }
+            }
+        )
+    }
     Scaffold(
         topBar = { HighwayHeader() },
         bottomBar = {
@@ -1345,6 +1369,9 @@ fun SettingsScreen(vm: AppViewModel) {
                 "Version ${appVersion(LocalContext.current)}",
                 style = MaterialTheme.typography.bodySmall
             )
+            Spacer(Modifier.height(6.dp))
+            Text(DISCLAIMER_SHORT, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = { openLink(context, AppConfig.PRIVACY_URL) }) { Text("Privacy and disclaimer") }
             Spacer(Modifier.height(8.dp))
             if (AppConfig.DONATE_URL.isNotBlank()) {
                 Button(onClick = { openLink(context, AppConfig.DONATE_URL) }) {
@@ -2386,6 +2413,10 @@ private fun ImportPreviewDialog(
         dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } }
     )
 }
+
+private const val DISCLAIMER_SHORT =
+    "Provided as is, with no warranty, under the GPL-3.0 license. Mileage and values are estimates, " +
+        "not tax advice: check your records and the official IRS rates. Don't use your phone while driving."
 
 private fun appVersion(context: Context): String = try {
     @Suppress("DEPRECATION")

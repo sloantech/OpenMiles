@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenMiles: privacy and disclaimer</title>
+<meta name="description" content="OpenMiles collects nothing and sends nothing. Plain-language privacy policy and disclaimer.">
+<style>
+  :root { --navy: #0F2A44; --amber: #F2A900; --bg: #F3F5F8; --card: #FFFFFF; --text: #0F1B2A; --sub: #4A596B; --line: #E1E6EC; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text); background: var(--bg); line-height: 1.6; }
+  a { color: #163a5c; }
+  header { background: var(--navy); color: #fff; padding: 22px 0; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 0 20px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; color: #fff; text-decoration: none; }
+  .tile { width: 32px; height: 32px; border-radius: 9px; background: var(--amber); display: grid; place-items: center; }
+  main { padding: 36px 0 48px; }
+  h1 { font-size: 32px; margin: 0 0 6px; letter-spacing: -0.5px; }
+  .updated { color: var(--sub); margin: 0 0 28px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px; margin-bottom: 20px; }
+  h2 { font-size: 22px; margin: 0 0 10px; }
+  ul { padding-left: 20px; margin: 0; }
+  li { margin-bottom: 8px; }
+  p { margin: 0 0 10px; }
+  footer { padding: 0 0 40px; color: var(--sub); font-size: 14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="./">
+      <span class="tile" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0F2A44" stroke-width="2.2" stroke-linecap="round"><path d="M8 3L4 21M16 3l4 18M12 4v3M12 11v3M12 18v2"/></svg></span>
+      OpenMiles
+    </a>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <h1>Privacy and disclaimer</h1>
+    <p class="updated">Last updated November 17, 2026. Applies to OpenMiles for Android.</p>
+
+    <div class="card">
+      <h2>Privacy: we collect nothing</h2>
+      <p>OpenMiles has no internet permission. It cannot send anything anywhere, and every build of the app checks that this stays true.</p>
+      <ul>
+        <li><strong>No accounts, no ads, no analytics, no tracking.</strong> The developer never receives your data.</li>
+        <li><strong>Location</strong> is used only to measure your drives, and only while a drive is recording. A notification shows whenever it is.</li>
+        <li><strong>Background location and physical activity</strong> are only used if you turn on automatic drive detection, to notice when a drive starts and ends.</li>
+        <li><strong>Everything stays on your phone</strong>, in the app's private storage. Android's automatic cloud backup is turned off for OpenMiles.</li>
+        <li><strong>Exports</strong> (PDF, spreadsheet, backup file, detection log) only leave your phone when you tap Export, Share or Backup, and only go to the app or place you pick. What happens to them after that is up to that app or place.</li>
+        <li><strong>Google Timeline imports</strong> are read on your phone. Only the car drives are kept.</li>
+        <li><strong>Deleting your data:</strong> uninstall the app, or clear its storage in your phone's settings. Delete any backup files you saved, too.</li>
+      </ul>
+      <p style="margin-top:12px">This website is hosted by GitHub Pages. GitHub may keep basic server logs of visits, as any web host does. The website itself uses no cookies, trackers or outside fonts.</p>
+    </div>
+
+    <div class="card">
+      <h2>Disclaimer</h2>
+      <ul>
+        <li><strong>Provided as is, with no warranty.</strong> OpenMiles is free, beta software. You use it at your own risk. The GNU General Public License v3.0 that covers OpenMiles says the same thing in sections 15 and 16, and the license controls.</li>
+        <li><strong>Not tax, legal or financial advice.</strong> Mileage, values and reports are estimates. GPS can miss or misjudge distance. Check your records against your odometer and talk to a tax professional about your situation.</li>
+        <li><strong>Rates can change.</strong> IRS standard mileage rates are built in for convenience. Check <a href="https://www.irs.gov/tax-professionals/standard-mileage-rates">the IRS standard mileage rates page</a> for the official figures.</li>
+        <li><strong>Your records are your responsibility.</strong> Your drives exist only on your phone. Make regular backups.</li>
+        <li><strong>Drive safely.</strong> Do not use your phone while driving. Start drives and change settings before you go, or let automatic detection do it.</li>
+        <li><strong>Not affiliated</strong> with any other mileage tracking app. Other names and trademarks belong to their owners.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Questions</h2>
+      <p>OpenMiles is open source, so anyone can check exactly what it does. See the <a href="https://github.com/sloantech/OpenMiles">source code</a> or open an issue on the <a href="https://github.com/sloantech/OpenMiles/issues">project page</a>.</p>
+    </div>
+  </div>
+</main>
+<footer><div class="wrap"><a href="./">Back to OpenMiles</a></div></footer>
+</body>
+</html>

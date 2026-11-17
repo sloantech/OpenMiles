@@ -3,6 +3,15 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.11.2] - 2026-11-17
+
+### Added
+- A plain-language privacy policy and disclaimer on the project website, linked from the app
+  (Settings, About), the README and the website footer.
+- A one-time "Before you start" note when the app first opens: free beta software provided as
+  is, estimates not tax advice, keep backups, and don't use your phone while driving.
+- A short disclaimer under Settings, About, and in the README.
+
 ## [0.11.1] - 2026-11-17
 
 ### Changed

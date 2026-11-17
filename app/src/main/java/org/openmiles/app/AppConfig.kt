@@ -14,5 +14,8 @@ object AppConfig {
     const val SOURCE_URL = "https://github.com/sloantech/openmiles"
 
     /** The page with the newest version to download. Opened in the browser, never by the app. */
+    /** Plain-language privacy policy and disclaimer. Opened in the browser, never by the app. */
+    const val PRIVACY_URL = "https://sloantech.github.io/OpenMiles/privacy.html"
+
     const val RELEASES_URL = "https://github.com/sloantech/OpenMiles/releases/latest"
 }

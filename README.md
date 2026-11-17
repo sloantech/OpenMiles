@@ -93,6 +93,19 @@ If you would rather be told about updates automatically, the free open source ap
   need the internet.
 - Android only for now.
 
+## Disclaimer
+
+- **As is, no warranty.** OpenMiles is free, beta software, and you use it at your own risk.
+  Sections 15 and 16 of the GPL-3.0 license say the same, and the license controls.
+- **Not tax, legal or financial advice.** Mileage, values and reports are estimates. Check them
+  against your odometer and talk to a tax professional. IRS rates can change; check
+  [the IRS standard mileage rates page](https://www.irs.gov/tax-professionals/standard-mileage-rates).
+- **Your records are your responsibility.** Drives are stored only on your phone. Make backups.
+- **Drive safely.** Don't use your phone while driving. Set things up before you go.
+- **Not affiliated** with any other mileage tracking app. Other names belong to their owners.
+
+Full [privacy policy and disclaimer](https://sloantech.github.io/OpenMiles/privacy.html).
+
 ## Fonts
 
 OpenMiles bundles the Inter and Space Grotesk fonts (SIL Open Font License 1.1). See
