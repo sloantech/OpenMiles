@@ -5,6 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenMiles: free, private mileage tracking for Android</title>
 <meta name="description" content="OpenMiles is a free, open source mileage tracker for Android. No subscription, no account, no ads. Your drives never leave your phone.">
+<link rel="canonical" href="https://sloantech.github.io/OpenMiles/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23F2A900'/%3E%3Cpath d='M12 6L8 26M20 6l4 20M16 7v4M16 15v3M16 22v3' stroke='%230F2A44' stroke-width='2.4' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="OpenMiles">
+<meta property="og:title" content="OpenMiles: free, private mileage tracking for Android">
+<meta property="og:description" content="No subscription, no account, no internet access. Automatic drive detection, IRS rates, PDF and spreadsheet reports. Your drives stay on your phone.">
+<meta property="og:url" content="https://sloantech.github.io/OpenMiles/">
+<meta property="og:image" content="https://sloantech.github.io/OpenMiles/social-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="OpenMiles: Track your miles. Keep your money. Keep your data.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="OpenMiles: free, private mileage tracking for Android">
+<meta name="twitter:description" content="No subscription, no account, no internet access. Your drives stay on your phone.">
+<meta name="twitter:image" content="https://sloantech.github.io/OpenMiles/social-card.png">
 <style>
   :root {
     --navy: #0F2A44; --navy-2: #163a5c; --amber: #F2A900; --on-amber: #0F2A44;
@@ -57,6 +72,30 @@
   .dark ul { padding-left: 20px; margin: 0; display: grid; gap: 10px; font-size: 16px; color: #E6EDF5; }
   ol.steps { margin: 0; padding-left: 22px; display: grid; gap: 10px; font-size: 16px; }
   .beta { background: #FFF6DA; border: 1px solid #F2D27A; border-radius: 14px; padding: 14px 18px; color: #5A4600; font-size: 15px; margin-top: 24px; }
+  .trust { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 40px; }
+  .trust span { background: rgba(255,255,255,.10); color: #E6EDF5; border-radius: 99px; padding: 8px 14px; font-size: 14px; font-weight: 600; }
+  .calc { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: center; }
+  .calc label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .calc .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .calc input, .calc select { font: inherit; font-size: 18px; padding: 10px 12px; border: 1.5px solid #C5CED8; border-radius: 12px; min-height: 48px; background: #fff; color: var(--text); }
+  .calc input { width: 160px; }
+  .calc input:focus, .calc select:focus { outline: 3px solid var(--amber); outline-offset: 1px; }
+  .result { background: var(--navy); color: #fff; border-radius: 18px; padding: 22px; }
+  .result .big { font-size: 40px; font-weight: 800; letter-spacing: -1px; line-height: 1.1; }
+  .result small { color: #B9C7D6; font-size: 14px; }
+  .steps-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; counter-reset: step; }
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; }
+  .step::before { counter-increment: step; content: counter(step); display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--amber); color: var(--on-amber); font-weight: 800; margin-bottom: 10px; }
+  .step h3 { margin: 0 0 6px; font-size: 17px; }
+  .step p { margin: 0; color: var(--sub); font-size: 15px; }
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; }
+  summary { cursor: pointer; padding: 16px 20px; font-weight: 700; font-size: 16px; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; color: var(--sub); font-weight: 400; font-size: 20px; line-height: 1; }
+  details[open] summary::after { content: "\2212"; }
+  details p { margin: 0; padding: 0 20px 18px; color: var(--sub); }
+  @media (max-width: 860px) { .calc { grid-template-columns: 1fr; } .steps-grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 520px) { .steps-grid { grid-template-columns: 1fr; } }
   footer { padding: 36px 0 48px; color: var(--sub); font-size: 14px; border-top: 1px solid var(--line); }
   @media (max-width: 860px) {
     .hero-grid { grid-template-columns: 1fr; }
@@ -98,6 +137,9 @@
         <p class="caption">Illustration with example drives.</p>
       </div>
     </div>
+    <div class="trust" aria-label="At a glance">
+      <span>Free forever</span><span>No account</span><span>No ads</span><span>No internet access</span><span>Open source</span><span>Works offline</span>
+    </div>
   </div>
 </header>
 
@@ -124,6 +166,31 @@
   </div>
 </section>
 
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <h2>What would you save?</h2>
+    <p class="intro">Enter what you pay for mileage tracking today. OpenMiles costs nothing, so every dollar is yours to keep.</p>
+    <div class="calc">
+      <form id="calc" onsubmit="return false">
+        <label for="cost">Your current price</label>
+        <div class="row">
+          <input id="cost" type="number" inputmode="decimal" min="0" max="10000" step="0.01" placeholder="0.00" aria-describedby="calc-note">
+          <select id="period" aria-label="How often you pay">
+            <option value="12">per month</option>
+            <option value="1">per year</option>
+          </select>
+        </div>
+        <p id="calc-note" style="color:var(--sub);font-size:14px;margin:10px 0 0">Your numbers stay in this page. Nothing is sent anywhere.</p>
+      </form>
+      <div class="result" aria-live="polite">
+        <small>You'd keep</small>
+        <div class="big" id="per-year">$0 a year</div>
+        <small id="five-years">$0 over five years</small>
+      </div>
+    </div>
+  </div>
+</section>
 <section style="padding-top:0">
   <div class="wrap">
     <h2>Everything you need for a mileage log</h2>
@@ -142,6 +209,20 @@
   </div>
 </section>
 
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <h2>Switching takes about five minutes</h2>
+    <p class="intro">You can keep your current app while you try OpenMiles. They don't get in each other's way.</p>
+    <div class="steps-grid">
+      <div class="step"><h3>Install</h3><p>Download the app from the newest release and open it. No account to create.</p></div>
+      <div class="step"><h3>Bring your history</h3><p>Export your Google Maps Timeline on your phone and import it. Your past drives come in, read only on your phone.</p></div>
+      <div class="step"><h3>Set your rules</h3><p>Name Home and Office, and set your work hours. New drives get the right category without a swipe.</p></div>
+      <div class="step"><h3>Drive</h3><p>Turn on automatic detection or tap Start. Back up once a month and you're set.</p></div>
+    </div>
+    <p style="color:var(--sub);margin-top:16px">Imports from other mileage apps are planned.</p>
+  </div>
+</section>
 <section class="dark">
   <div class="wrap">
     <h2>Private by design</h2>
@@ -156,6 +237,21 @@
   </div>
 </section>
 
+
+<section>
+  <div class="wrap">
+    <h2>Questions</h2>
+    <p class="intro">The honest answers, including the limits.</p>
+    <details><summary>Is it really free? What's the catch?</summary><p>It's free, with no paid tier, ads or data sales. It was built by one developer who was tired of paying a monthly fee for mileage tracking. If it helps you, you can leave a donation, but you never have to.</p></details>
+    <details><summary>Is my data safe?</summary><p>The app has no internet permission, so it cannot send your drives anywhere, and every build checks that. Drives stay in the app's private storage on your phone. Nothing leaves unless you export or back it up yourself. See the <a href="privacy.html">privacy policy</a>.</p></details>
+    <details><summary>Is it accurate enough for taxes?</summary><p>It records the date, times, miles, category and your notes for each drive, and the PDF log adds totals, IRS-rate values and yearly odometer readings. GPS can still miss or misjudge distance, so compare your first weeks with your odometer. OpenMiles is not tax advice; check with a tax professional.</p></details>
+    <details><summary>Will it drain my battery?</summary><p>With manual Start and Stop, GPS only runs while you're driving. Automatic detection uses Android's low-power activity sensor while you're not driving, and GPS only once a drive starts. Expect some extra use with it on.</p></details>
+    <details><summary>What if I lose or replace my phone?</summary><p>Make a backup in Settings and save it somewhere you choose, like Google Drive or email. Restore it on the new phone. Restoring only adds what's missing and never deletes anything.</p></details>
+    <details><summary>How do updates work?</summary><p>Download the newest version from the release page and it installs over the old one, keeping your drives. The app gently reminds you to check after about two months. If you'd like automatic update alerts, the free <a href="https://github.com/ImranR98/Obtainium">Obtainium</a> app can watch the project for you.</p></details>
+    <details><summary>Is it on the Play Store? What about iPhone?</summary><p>Not yet. For now it installs from the project's release page, and Android asks you to allow the install. That's normal for apps outside the Play Store. OpenMiles is Android only for now.</p></details>
+    <details><summary>Is it finished?</summary><p>It's in beta. Every build runs a full set of automatic tests plus security checks, and real-world driving tests are underway. See <a href="https://github.com/sloantech/OpenMiles/blob/main/CHANGELOG.md">what changed in each version</a>.</p></details>
+  </div>
+</section>
 <section>
   <div class="wrap">
     <h2>Install it</h2>
@@ -185,5 +281,28 @@
     Don't use your phone while driving. Not affiliated with any other mileage tracking app.
   </div>
 </footer>
+
+<script>
+  (function () {
+    var cost = document.getElementById('cost');
+    var period = document.getElementById('period');
+    var perYear = document.getElementById('per-year');
+    var five = document.getElementById('five-years');
+    function money(n) {
+      return '$' + n.toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+    }
+    function update() {
+      var v = parseFloat(cost.value);
+      if (!isFinite(v) || v < 0) v = 0;
+      if (v > 10000) v = 10000;
+      var year = Math.round(v * parseInt(period.value, 10) * 100) / 100;
+      perYear.textContent = money(year) + ' a year';
+      five.textContent = money(Math.round(year * 5 * 100) / 100) + ' over five years';
+    }
+    cost.addEventListener('input', update);
+    period.addEventListener('change', update);
+    update();
+  })();
+</script>
 </body>
 </html>
