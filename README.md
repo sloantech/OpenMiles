@@ -26,7 +26,8 @@ so compare your first weeks of drives against another tracker or your odometer.
 - Auto-classify rules: work hours, and named places like Home or Office, give new drives a
   category automatically. Places can also ignore short moves, like in a parking lot.
 - Edit, split or merge drives. Changed drives are marked "edited" in reports.
-- Add a drive by hand when the app was off, or import past drives from Google Maps Timeline.
+- Add a drive by hand when the app was off, or import past drives from Google Maps Timeline
+  or a MileIQ CSV report (categories, places, purposes, parking and tolls come along).
   Every drive shows where it came from, in the app and in exports.
 - Backup and restore: save one backup file wherever you like, and restore it on a new phone.
   Restoring only adds what is missing and never deletes anything.
@@ -37,7 +38,6 @@ so compare your first weeks of drives against another tracker or your odometer.
 
 ## What comes next
 
-- Import drives from MileIQ (waiting on a sample export file)
 - A map view (it needs care, because map pictures normally come from the internet)
 
 ## How to install it on your phone
@@ -73,7 +73,7 @@ If you would rather be told about updates automatically, the free open source ap
   off, or pausing it, stops new drives from starting on their own.
 - Exports (PDF, spreadsheet, backup, detection log) leave the phone only when you tap them,
   and only to the app or place you pick.
-- A Google Timeline file you import is read on the phone. Only the car drives are kept.
+- A Google Timeline file or MileIQ report you import is read on the phone. Only the drives are kept.
 - Every build also runs security checks: Android's security lint rules, and a scan of every
   library against a public database of known vulnerabilities.
 

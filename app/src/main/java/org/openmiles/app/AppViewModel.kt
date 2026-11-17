@@ -37,6 +37,8 @@ import org.openmiles.app.domain.BackupRate
 import org.openmiles.app.domain.BackupTrip
 import org.openmiles.app.domain.Calc
 import org.openmiles.app.domain.ImportedDrive
+import org.openmiles.app.domain.MileIqDrive
+import org.openmiles.app.domain.MileIqImport
 import org.openmiles.app.domain.TimelineImport
 import org.openmiles.app.domain.TripEdit
 import org.openmiles.app.domain.Validation
@@ -394,6 +396,86 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearImport() {
         _import.value = ImportState.Idle
+    }
+
+    // ---- MileIQ import ---------------------------------------------------------------------
+
+    sealed class MileIqState {
+        object Idle : MileIqState()
+        object Reading : MileIqState()
+        data class Ready(val parsed: MileIqImport.Parsed, val overlapping: BooleanArray) : MileIqState()
+        object Saving : MileIqState()
+        data class Done(val added: Int) : MileIqState()
+        data class Failed(val message: String) : MileIqState()
+    }
+
+    private val _mileIq = MutableStateFlow<MileIqState>(MileIqState.Idle)
+    val mileIqState: StateFlow<MileIqState> = _mileIq
+
+    /** Reads a MileIQ CSV report on a background thread. Nothing is saved until the person confirms. */
+    fun readMileIq(uri: Uri) {
+        _mileIq.value = MileIqState.Reading
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            _mileIq.value = try {
+                val stream = app.contentResolver.openInputStream(uri)
+                    ?: throw MileIqImport.NotAMileIqFile("Could not open that file.")
+                val parsed = stream.use { MileIqImport.parse(InputStreamReader(it, Charsets.UTF_8).buffered()) }
+                if (parsed.drives.isEmpty()) {
+                    MileIqState.Failed("No drives were found in that file.")
+                } else {
+                    MileIqState.Ready(parsed, MileIqImport.overlaps(parsed.drives, db.tripDao().allSpans()))
+                }
+            } catch (e: MileIqImport.NotAMileIqFile) {
+                MileIqState.Failed(e.message ?: "That file could not be read.")
+            } catch (e: Exception) {
+                MileIqState.Failed("That file could not be read. Make sure it is a CSV report from MileIQ.")
+            } catch (e: OutOfMemoryError) {
+                MileIqState.Failed("That file is too large for this phone to read.")
+            }
+        }
+    }
+
+    /** Saves the chosen MileIQ drives, all at once or not at all. MileIQ's categories are kept. */
+    fun importMileIq(drives: List<MileIqDrive>) {
+        _mileIq.value = MileIqState.Saving
+        viewModelScope.launch(Dispatchers.IO) {
+            _mileIq.value = try {
+                val categories = db.categoryDao().all()
+                fun categoryFor(d: MileIqDrive): Long? {
+                    val kind = d.kind ?: return null
+                    // A category with the same name as MileIQ's purpose wins, then the built-in one.
+                    return categories.firstOrNull { it.kind == kind && it.name.equals(d.purpose, ignoreCase = true) }?.id
+                        ?: categories.firstOrNull { it.kind == kind && it.builtIn }?.id
+                        ?: categories.firstOrNull { it.kind == kind }?.id
+                }
+                db.withTransaction {
+                    drives.chunked(500).forEach { chunk ->
+                        db.tripDao().insertAll(
+                            chunk.map {
+                                Trip(
+                                    startTime = it.startMs,
+                                    endTime = it.endMs,
+                                    distanceMeters = it.meters,
+                                    categoryId = categoryFor(it),
+                                    notes = it.noteText(MAX_NOTES),
+                                    source = Source.MILEIQ,
+                                    parkingCents = it.parkingCents,
+                                    tollsCents = it.tollsCents
+                                )
+                            }
+                        )
+                    }
+                }
+                MileIqState.Done(drives.size)
+            } catch (e: Exception) {
+                MileIqState.Failed("The drives could not be saved. Nothing was added.")
+            }
+        }
+    }
+
+    fun clearMileIq() {
+        _mileIq.value = MileIqState.Idle
     }
 
     // ---- Backup and restore ------------------------------------------------------------------

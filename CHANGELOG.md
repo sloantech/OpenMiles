@@ -3,6 +3,18 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.12.0] - 2026-11-17
+
+### Added
+- Import from MileIQ. Download your MileIQ report as CSV (from a report email or the MileIQ
+  dashboard) and choose it in Settings, under Import drives. You see a preview first. Drives keep
+  MileIQ's category (Business, Personal, Medical, Charity), and the start and stop places,
+  purpose, vehicle, notes, parking and tolls are kept too. Drives already in OpenMiles are skipped.
+  Imported drives are marked "MileIQ import" in reports.
+- Icons on the swipe colors: a briefcase for Business, a house for Personal.
+- A count of drives to classify on the Drives tab.
+- The month card shows what your unclassified drives would be worth if they were business.
+
 ## [0.11.2] - 2026-11-17
 
 ### Added

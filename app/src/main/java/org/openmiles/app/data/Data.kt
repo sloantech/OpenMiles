@@ -48,10 +48,12 @@ object Source {
     const val GPS = "gps"
     const val MANUAL = "manual"
     const val TIMELINE = "timeline"
+    const val MILEIQ = "mileiq"
 
     fun label(source: String): String = when (source) {
         MANUAL -> "Added by hand"
         TIMELINE -> "Google Timeline"
+        MILEIQ -> "MileIQ import"
         else -> "GPS"
     }
 

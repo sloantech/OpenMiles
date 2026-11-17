@@ -268,4 +268,6 @@ object HighwayIcons {
     val Plus = lineIcon("plus", "M12 5v14", "M5 12h14")
     val Play = lineIcon("play", "M8 5v14l11-7z")
     val Stop = lineIcon("stop", "M7 7h10v10H7z")
+    val Briefcase = lineIcon("briefcase", "M3 8h18v12H3z", "M8 8V5h8v3", "M3 13h18")
+    val Home = lineIcon("home", "M3 11l9-7l9 7", "M5 10v10h14V10", "M10 20v-6h4v6")
 }

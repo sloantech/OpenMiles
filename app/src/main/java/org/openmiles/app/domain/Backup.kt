@@ -58,7 +58,7 @@ object BackupCodec {
     const val VERSION = 1
 
     private val KINDS = setOf("BUSINESS", "PERSONAL", "MEDICAL", "CHARITY")
-    private val SOURCES = setOf("gps", "manual", "timeline")
+    private val SOURCES = setOf("gps", "manual", "timeline", "mileiq")
     private const val MAX_NAME = 40
     private const val MAX_NOTES = 200
     private const val MAX_ROUTE = 2_000_000

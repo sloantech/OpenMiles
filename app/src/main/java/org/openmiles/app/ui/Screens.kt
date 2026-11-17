@@ -51,6 +51,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
@@ -117,6 +119,8 @@ import org.openmiles.app.domain.Pause
 import org.openmiles.app.domain.Report
 import org.openmiles.app.domain.ReportData
 import org.openmiles.app.domain.TimelineImport
+import org.openmiles.app.domain.MileIqDrive
+import org.openmiles.app.domain.MileIqImport
 import org.openmiles.app.domain.TripEdit
 import org.openmiles.app.domain.UpdateReminder
 import org.openmiles.app.domain.Validation
@@ -138,6 +142,12 @@ fun OpenMilesApp(vm: AppViewModel) {
         "Reports" to HighwayIcons.Chart,
         "Settings" to HighwayIcons.Gear
     )
+    val allTrips by vm.trips.collectAsStateWithLifecycle()
+    val allCategories by vm.categories.collectAsStateWithLifecycle()
+    val unclassified = remember(allTrips, allCategories) {
+        val ids = allCategories.map { it.id }.toSet()
+        allTrips.count { it.categoryId == null || it.categoryId !in ids }
+    }
     val ctx = LocalContext.current
     val introPrefs = remember { ctx.getSharedPreferences("intro", Context.MODE_PRIVATE) }
     var showIntro by remember { mutableStateOf(!introPrefs.getBoolean("seen_disclaimer", false)) }
@@ -170,7 +180,15 @@ fun OpenMilesApp(vm: AppViewModel) {
                     NavigationBarItem(
                         selected = tab == index,
                         onClick = { tab = index },
-                        icon = { Icon(icon, contentDescription = null) },
+                        icon = {
+                            if (index == 0 && unclassified > 0) {
+                                BadgedBox(badge = {
+                                    Badge { Text(if (unclassified > 99) "99+" else unclassified.toString()) }
+                                }) { Icon(icon, contentDescription = "$unclassified drives to classify") }
+                            } else {
+                                Icon(icon, contentDescription = null)
+                            }
+                        },
                         label = { Text(label) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -327,6 +345,12 @@ fun DrivesScreen(vm: AppViewModel) {
     val toClassify = remember(trips, byCategory) {
         trips.count { it.categoryId == null || byCategory[it.categoryId] == null }
     }
+    // What the drives left to classify would be worth if they were all business, like MileIQ's "potential".
+    val potential = remember(trips, byCategory, rates) {
+        trips.filter { it.categoryId == null || byCategory[it.categoryId] == null }.sumOf { t ->
+            Calc.miles(t.distanceMeters) * Calc.rateFor(Kind.BUSINESS, Calc.toDate(t.startTime), rates)
+        }
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -381,7 +405,8 @@ fun DrivesScreen(vm: AppViewModel) {
                 meters = monthTrips.sumOf { it.distanceMeters },
                 drives = monthTrips.size,
                 businessValue = monthBusiness,
-                toClassify = toClassify
+                toClassify = toClassify,
+                potential = potential
             )
         }
         item(key = "record") {
@@ -573,7 +598,14 @@ private fun dayLabel(day: LocalDate, today: LocalDate): String = when (day) {
 
 /** The navy card at the top: this month's miles, business value, and drives left to classify. */
 @Composable
-private fun MonthSummary(monthName: String, meters: Double, drives: Int, businessValue: Double, toClassify: Int) {
+private fun MonthSummary(
+    monthName: String,
+    meters: Double,
+    drives: Int,
+    businessValue: Double,
+    toClassify: Int,
+    potential: Double
+) {
     val extra = LocalExtraColors.current
     Card(
         colors = CardDefaults.cardColors(containerColor = extra.header, contentColor = extra.onHeader),
@@ -622,6 +654,13 @@ private fun MonthSummary(monthName: String, meters: Double, drives: Int, busines
                     extra.todo,
                     extra.todoBg
                 )
+                if (potential >= 0.01) {
+                    Text(
+                        "Worth up to ${Calc.fmtMoney(potential)} more if they're business.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = extra.headerSubtext
+                    )
+                }
             }
         }
     }
@@ -748,11 +787,17 @@ private fun TripRow(
                 SwipeToDismissBoxValue.EndToStart -> Triple(extra.swipePersonal, "Personal", Alignment.CenterEnd)
                 else -> Triple(Color.Transparent, "", Alignment.Center)
             }
+            val icon = if (label == "Business") HighwayIcons.Briefcase else HighwayIcons.Home
             Box(
                 Modifier.fillMaxSize().background(color).padding(horizontal = 22.dp),
                 contentAlignment = alignment
             ) {
-                Text(label, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                if (label.isNotEmpty()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(icon, contentDescription = null, tint = Color.White)
+                        Text(label, color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
             }
         }
     ) {
@@ -927,7 +972,7 @@ private fun TripDialog(
                         }) { Text("Merge with next") }
                     }
                 }
-                if (trip.source != Source.MANUAL) {
+                if (trip.source != Source.MANUAL && trip.source != Source.MILEIQ) {
                     Spacer(Modifier.height(8.dp))
                     Text("Name a place", fontWeight = FontWeight.Bold)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2303,6 +2348,8 @@ private fun ImportSection(vm: AppViewModel) {
     val busy = state is AppViewModel.ImportState.Reading || state is AppViewModel.ImportState.Saving
 
     Text("Import drives", style = MaterialTheme.typography.titleLarge)
+    MileIqImportBlock(vm)
+    Spacer(Modifier.height(12.dp))
     Text(
         "Bring in past drives from Google Maps Timeline. First, on your phone open Settings, Location, " +
             "Location services, Timeline, and tap Export Timeline data. Then choose that file here. " +
@@ -2329,6 +2376,106 @@ private fun ImportSection(vm: AppViewModel) {
         )
         else -> Unit
     }
+}
+
+@Composable
+private fun MileIqImportBlock(vm: AppViewModel) {
+    val state by vm.mileIqState.collectAsStateWithLifecycle()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.readMileIq(uri)
+    }
+    val busy = state is AppViewModel.MileIqState.Reading || state is AppViewModel.MileIqState.Saving
+    Text(
+        "Switching from MileIQ? Download your report as CSV from a MileIQ report email or the MileIQ " +
+            "dashboard, then choose it here. Categories, places, purposes, parking and tolls come along.",
+        style = MaterialTheme.typography.bodySmall
+    )
+    OutlinedButton(
+        onClick = {
+            picker.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain", "application/csv", "application/octet-stream", "application/vnd.ms-excel"))
+        },
+        enabled = !busy
+    ) { Text("Import from MileIQ") }
+
+    when (val st = state) {
+        AppViewModel.MileIqState.Reading -> BusyLine("Reading the file...")
+        AppViewModel.MileIqState.Saving -> BusyLine("Saving drives...")
+        is AppViewModel.MileIqState.Done -> Text(
+            "Added ${st.added} drives from MileIQ. They are on the Drives tab.",
+            color = MaterialTheme.colorScheme.primary
+        )
+        is AppViewModel.MileIqState.Failed -> Text(st.message, color = MaterialTheme.colorScheme.error)
+        is AppViewModel.MileIqState.Ready -> MileIqPreviewDialog(
+            ready = st,
+            onImport = { vm.importMileIq(it) },
+            onCancel = { vm.clearMileIq() }
+        )
+        else -> Unit
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MileIqPreviewDialog(
+    ready: AppViewModel.MileIqState.Ready,
+    onImport: (List<MileIqDrive>) -> Unit,
+    onCancel: () -> Unit
+) {
+    val drives = ready.parsed.drives
+    val byYear = remember(drives) { drives.groupingBy { it.year() }.eachCount().toSortedMap() }
+    var years by remember(drives) { mutableStateOf(byYear.keys.toSet()) }
+    val plan = remember(years) { MileIqImport.plan(drives, ready.overlapping, years) }
+    val miles = plan.toAdd.sumOf { it.meters } / Calc.METERS_PER_MILE
+    val byKind = plan.toAdd.groupingBy { it.kind }.eachCount()
+
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Import from MileIQ") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("Found ${drives.size} drives. Choose which years to bring in:")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    byYear.forEach { (year, count) ->
+                        FilterChip(
+                            selected = year in years,
+                            onClick = { years = if (year in years) years - year else years + year },
+                            label = { Text("$year ($count)") }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    String.format(java.util.Locale.US, "Will add %d drives, %.1f miles.", plan.toAdd.size, miles),
+                    fontWeight = FontWeight.Bold
+                )
+                val kinds = listOf(Kind.BUSINESS, Kind.PERSONAL, Kind.MEDICAL, Kind.CHARITY)
+                    .mapNotNull { k -> byKind[k]?.let { "${Kind.label(k)} $it" } } +
+                    listOfNotNull(byKind[null]?.let { "Not classified $it" })
+                if (kinds.isNotEmpty()) Text(kinds.joinToString(", "), style = MaterialTheme.typography.bodySmall)
+                if (plan.skippedOverlap > 0) {
+                    Text("Skipped, already in OpenMiles: ${plan.skippedOverlap}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (ready.parsed.rejected > 0) {
+                    Text("Rows that could not be read, left out: ${ready.parsed.rejected}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (ready.parsed.usedKilometers) {
+                    Text("This report is in kilometers. Distances were converted.", style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Imported drives are marked \"MileIQ import\" in reports. Miles are MileIQ's. Values use " +
+                        "your OpenMiles rates, so compare the totals with your MileIQ report once.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onImport(plan.toAdd) }, enabled = plan.toAdd.isNotEmpty()) {
+                Text("Add ${plan.toAdd.size} drives")
+            }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } }
+    )
 }
 
 @Composable
