@@ -144,3 +144,39 @@ jobs:
             app/build/reports/tests/
             app/build/reports/lint-results-debug.html
           if-no-files-found: ignore
+
+  # Puts the newest signed app on one simple download page, so phones don't need the Actions tab.
+  # Runs only after a successful build of the main branch, never for pull requests.
+  publish:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-latest
+      cancel-in-progress: false
+    steps:
+      - name: Get the signed app from the build
+        uses: actions/download-artifact@v4
+        with:
+          name: OpenMiles-release-apk
+          path: apk
+
+      - name: Replace the "latest" download with this build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          mv apk/app-release.apk OpenMiles.apk
+          gh release delete latest --repo "$REPO" --cleanup-tag --yes || true
+          gh release create latest OpenMiles.apk \
+            --repo "$REPO" \
+            --target "$GITHUB_SHA" \
+            --title "OpenMiles (newest build)" \
+            --latest \
+            --notes "Newest signed build, made automatically from commit ${GITHUB_SHA::7}.
+
+          Install on Android: tap OpenMiles.apk below, then open the download. It installs over an earlier OpenMiles without losing your drives.
+
+          This is a beta. See the README for what has and has not been tested."
