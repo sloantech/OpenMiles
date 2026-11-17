@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenMiles: free, private mileage tracking for Android</title>
+<meta name="description" content="OpenMiles is a free, open source mileage tracker for Android. No subscription, no account, no ads. Your drives never leave your phone.">
+<style>
+  :root {
+    --navy: #0F2A44; --navy-2: #163a5c; --amber: #F2A900; --on-amber: #0F2A44;
+    --bg: #F3F5F8; --card: #FFFFFF; --text: #0F1B2A; --sub: #4A596B; --line: #E1E6EC;
+    --good: #14653A; --good-bg: #E3F4EA;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text); background: var(--bg); line-height: 1.55; }
+  a { color: var(--navy-2); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+  header.hero { background: var(--navy); color: #fff; padding: 28px 0 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 20px; }
+  .tile { width: 34px; height: 34px; border-radius: 10px; background: var(--amber); display: grid; place-items: center; }
+  .hero-grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 40px; align-items: center; margin-top: 48px; }
+  h1 { font-size: clamp(32px, 5vw, 52px); line-height: 1.08; margin: 0 0 18px; letter-spacing: -1px; }
+  .lead { font-size: 19px; color: #D3DEEA; margin: 0 0 28px; max-width: 34em; }
+  .btns { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 22px; border-radius: 14px; font-weight: 700; text-decoration: none; font-size: 16px; }
+  .btn-amber { background: var(--amber); color: var(--on-amber); }
+  .btn-ghost { border: 1.5px solid #6F8BA8; color: #fff; }
+  .note { margin-top: 18px; font-size: 14px; color: #B9C7D6; }
+  .phone { width: 280px; margin: 0 auto; background: var(--bg); border-radius: 34px; border: 8px solid #091B2C; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.35); }
+  .p-head { background: var(--navy); color: #fff; padding: 14px 14px 10px; display: flex; justify-content: space-between; align-items: center; font-weight: 700; font-size: 15px; }
+  .p-chip { font-size: 10px; font-weight: 600; color: #B9C7D6; background: rgba(255,255,255,.12); padding: 4px 8px; border-radius: 99px; }
+  .p-body { padding: 10px; display: grid; gap: 8px; }
+  .p-sum { background: var(--navy); color: #fff; border-radius: 14px; padding: 12px; }
+  .p-sum small { color: #B9C7D6; font-size: 9px; letter-spacing: 1px; font-weight: 700; }
+  .p-big { font-size: 28px; font-weight: 800; letter-spacing: -1px; }
+  .p-start { background: var(--amber); color: var(--on-amber); border-radius: 12px; text-align: center; font-weight: 800; padding: 11px; font-size: 13px; }
+  .p-card { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 9px 10px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--sub); }
+  .pill { display: inline-block; margin-top: 4px; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+  .biz { background: #E3EEFA; color: #1D5FAF; } .per { background: #FFF3C4; color: #6B5B00; } .todo { background: #FDEBD9; color: #A04800; }
+  .p-miles { font-size: 18px; font-weight: 800; color: var(--text); }
+  .caption { text-align: center; font-size: 12px; color: #B9C7D6; margin-top: 10px; }
+  section { padding: 64px 0; }
+  h2 { font-size: clamp(26px, 3.4vw, 36px); margin: 0 0 12px; letter-spacing: -0.5px; }
+  .intro { color: var(--sub); max-width: 46em; margin: 0 0 28px; font-size: 17px; }
+  .table-box { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 18px; }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 15px; }
+  th, td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #EDF1F5; font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--sub); }
+  td.us { font-weight: 600; color: var(--good); }
+  tr:last-child td { border-bottom: none; }
+  .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; }
+  .card h3 { margin: 0 0 8px; font-size: 18px; }
+  .card p { margin: 0; color: var(--sub); font-size: 15px; }
+  .dark { background: var(--navy); color: #fff; }
+  .dark .intro { color: #C9D6E3; }
+  .dark ul { padding-left: 20px; margin: 0; display: grid; gap: 10px; font-size: 16px; color: #E6EDF5; }
+  ol.steps { margin: 0; padding-left: 22px; display: grid; gap: 10px; font-size: 16px; }
+  .beta { background: #FFF6DA; border: 1px solid #F2D27A; border-radius: 14px; padding: 14px 18px; color: #5A4600; font-size: 15px; margin-top: 24px; }
+  footer { padding: 36px 0 48px; color: var(--sub); font-size: 14px; border-top: 1px solid var(--line); }
+  @media (max-width: 860px) {
+    .hero-grid { grid-template-columns: 1fr; }
+    .grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="brand">
+      <span class="tile" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0F2A44" stroke-width="2.2" stroke-linecap="round"><path d="M8 3L4 21M16 3l4 18M12 4v3M12 11v3M12 18v2"/></svg>
+      </span>
+      OpenMiles
+    </div>
+    <div class="hero-grid">
+      <div>
+        <h1>Track your miles.<br>Keep your money.<br>Keep your data.</h1>
+        <p class="lead">OpenMiles is a free, open source mileage tracker for Android. No subscription, no account, no ads. Your drives never leave your phone.</p>
+        <div class="btns">
+          <a class="btn btn-amber" href="https://github.com/sloantech/OpenMiles/releases/latest">Download for Android</a>
+          <a class="btn btn-ghost" href="https://github.com/sloantech/OpenMiles">See the source code</a>
+        </div>
+        <p class="note">Free forever under the GPL-3.0 license. Currently in beta.</p>
+      </div>
+      <div>
+        <div class="phone" role="img" aria-label="Illustration of the OpenMiles Drives screen with a monthly summary, a Start drive button and three drives.">
+          <div class="p-head"><span>OpenMiles</span><span class="p-chip">Auto-detect on</span></div>
+          <div class="p-body">
+            <div class="p-sum"><small>THIS MONTH</small><div class="p-big">142.3 mi</div><div style="font-size:11px;color:#B9C7D6">23 drives &middot; $103.12 business value</div></div>
+            <div class="p-start">&#9654; Start drive</div>
+            <div class="p-card"><div>8:12 AM to 8:41 AM<br><span class="pill biz">Business</span></div><div class="p-miles">18.4</div></div>
+            <div class="p-card"><div>12:05 PM to 12:19 PM<br><span class="pill todo">Swipe to classify</span></div><div class="p-miles">6.2</div></div>
+            <div class="p-card"><div>5:30 PM to 5:52 PM<br><span class="pill per">Personal</span></div><div class="p-miles">11.7</div></div>
+          </div>
+        </div>
+        <p class="caption">Illustration with example drives.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+<section>
+  <div class="wrap">
+    <h2>Why OpenMiles</h2>
+    <p class="intro">Most mileage apps work well, but you pay every month, and your location history lives on someone else's servers. OpenMiles does the same core job, for free, entirely on your phone.</p>
+    <div class="table-box">
+      <table>
+        <thead><tr><th scope="col"></th><th scope="col">OpenMiles</th><th scope="col">Typical subscription mileage apps</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Price</th><td class="us">Free, forever</td><td>Usually a monthly or yearly fee for full features</td></tr>
+          <tr><th scope="row">Account</th><td class="us">None needed</td><td>Usually required</td></tr>
+          <tr><th scope="row">Where your drives are kept</th><td class="us">Only on your phone</td><td>Usually on the company's servers</td></tr>
+          <tr><th scope="row">Internet access</th><td class="us">None. The app has no internet permission at all</td><td>Needed to sign in and sync</td></tr>
+          <tr><th scope="row">Source code</th><td class="us">Open. Anyone can check what it does</td><td>Usually closed</td></tr>
+          <tr><th scope="row">Backups</th><td class="us">One file you save where you choose</td><td>The company's cloud</td></tr>
+          <tr><th scope="row">Automatic drive detection</th><td class="us">Yes, optional and off by default</td><td>Yes, usually always on</td></tr>
+          <tr><th scope="row">IRS mileage log</th><td class="us">PDF and spreadsheet, included</td><td>Often included, sometimes only on paid plans</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <h2>Everything you need for a mileage log</h2>
+    <p class="intro">Built for people who drive for work and want accurate records without the monthly bill.</p>
+    <div class="grid">
+      <div class="card"><h3>Automatic or manual</h3><p>Turn on automatic drive detection, or tap Start and Stop yourself. Pause detection for an hour, a day or a week.</p></div>
+      <div class="card"><h3>Swipe to classify</h3><p>Swipe right for Business, left for Personal. Medical, Charity and your own categories are a tap away.</p></div>
+      <div class="card"><h3>Rules that do the work</h3><p>Name places like Home or Office and set work hours, and new drives get the right category on their own.</p></div>
+      <div class="card"><h3>IRS rates by date</h3><p>Mileage value uses the IRS standard rates in effect on each drive's date, including mid-year changes.</p></div>
+      <div class="card"><h3>Reports you can hand in</h3><p>Any date range, as a printable PDF mileage log or a spreadsheet. Parking, tolls and yearly odometer readings included.</p></div>
+      <div class="card"><h3>Fix anything</h3><p>Edit, split or merge drives, or add one by hand. Changed drives are clearly marked, so your log stays honest.</p></div>
+      <div class="card"><h3>Bring your history</h3><p>Import past drives from your Google Maps Timeline export, read only on your phone.</p></div>
+      <div class="card"><h3>Your data, your backup</h3><p>Save a backup file to wherever you like and restore it on a new phone. Restoring never deletes anything.</p></div>
+      <div class="card"><h3>Light and dark</h3><p>A clean navy and amber look that follows your phone's light or dark setting.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="dark">
+  <div class="wrap">
+    <h2>Private by design</h2>
+    <p class="intro">Privacy isn't a setting in OpenMiles. It's how the app is built.</p>
+    <ul>
+      <li>The app has no internet permission, so it cannot send your drives anywhere. Every build checks this and fails if it ever changes.</li>
+      <li>Location is used only while a drive is recording, and a notification always shows when it is.</li>
+      <li>Background location is only requested if you turn on automatic detection.</li>
+      <li>Nothing leaves your phone unless you tap Export, Share or Backup, and only to the place you pick.</li>
+      <li>Every build runs security checks and scans every library for known vulnerabilities.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Install it</h2>
+    <ol class="steps">
+      <li>On your Android phone, open the <a href="https://github.com/sloantech/OpenMiles/releases/latest">newest release</a>.</li>
+      <li>Under Assets, tap the file that ends in <code>.apk</code>.</li>
+      <li>Open the download and tap Install. Android asks you to allow installs from your browser. That is normal for apps outside the Play Store.</li>
+    </ol>
+    <div class="beta"><strong>OpenMiles is in beta.</strong> It is tested automatically on every build, and real-world driving tests are underway. For your first few weeks, compare it with your odometer or another tracker. See <a href="https://github.com/sloantech/OpenMiles/blob/main/CHANGELOG.md">what changed in each version</a>.</div>
+  </div>
+</section>
+
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="card">
+      <h3>Free, with one request</h3>
+      <p>OpenMiles is free software under the GPL-3.0 license. It was built so people don't have to pay a monthly fee to track mileage, so please don't sell it. If it saves you money, you can <a href="https://paypal.me/joshuasloan">support the developer</a> instead.</p>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    OpenMiles &middot; <a href="https://github.com/sloantech/OpenMiles">Source code</a> &middot; GPL-3.0 &middot;
+    Not affiliated with any other mileage tracking app. IRS rates are built in for convenience; check irs.gov for official figures.
+  </div>
+</footer>
+</body>
+</html>

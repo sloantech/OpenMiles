@@ -42,12 +42,14 @@ so compare your first weeks of drives against another tracker or your odometer.
 ## How to install it on your phone
 
 1. On your Android phone, open the [newest release](https://github.com/sloantech/OpenMiles/releases/latest).
-2. Under **Assets**, tap the file named like `OpenMiles-v0.3.0.apk`.
+2. Under **Assets**, tap the file that ends in `.apk` (for example `OpenMiles-v0.11.0.apk`).
 3. Open the download and tap **Install**. Android will ask you to allow installs from your
    browser or Files app. That is normal for apps outside the Play Store.
 
 New versions install over the old one. Your drives and settings are kept. When your copy is
 about two months old, the app shows a small note with a button that opens this download page.
+If you would rather be told about updates automatically, the free open source app
+[Obtainium](https://github.com/ImranR98/Obtainium) can watch this project's releases for you.
 
 
 ## Changing the name, support link, or app ID
@@ -59,27 +61,36 @@ about two months old, the app shows a small note with a button that opens this d
 
 ## Privacy and safety
 
-- The app has **no internet permission**. It cannot send your drives anywhere. The build fails if that ever changes.
-- Drives are stored only in the app's private storage on your phone.
+- The app has **no internet permission**. It cannot send your drives anywhere. Every build
+  checks this and fails if it ever changes.
+- Drives are stored only in the app's private storage on your phone. Android's automatic cloud
+  backup is turned off on purpose. Use **Backup** in Settings to save a copy where you choose.
 - Location is used only while a drive is recording, and a notification is always showing.
-- **Automatic drive detection is optional and off by default.** Turn it on in Settings. Only then
-  does the app ask for "Allow all the time" location and Physical activity, which it needs to
-  notice a drive while the app is closed. GPS still only runs while a drive is recording.
-  Turning it off stops everything in the background.
-- The spreadsheet export is only shared when you tap Export, and only to the app you pick.
+- **Automatic drive detection is optional and off by default.** Only when you turn it on does
+  the app ask for "Allow all the time" location and Physical activity, which it needs to notice
+  a drive while the app is closed. GPS still only runs while a drive is recording. Turning it
+  off, or pausing it, stops new drives from starting on their own.
+- Exports (PDF, spreadsheet, backup, detection log) leave the phone only when you tap them,
+  and only to the app or place you pick.
+- A Google Timeline file you import is read on the phone. Only the car drives are kept.
+- Every build also runs security checks: Android's security lint rules, and a scan of every
+  library against a public database of known vulnerabilities.
 
 ## Known limits
 
-- Automatic detection is new and needs real-world tuning. It may start a little late or miss
-  very short drives. Some phones (Samsung especially) block background apps: set OpenMiles to
-  Unrestricted battery if drives are missed.
+- **Beta.** Automatic detection needs real-world tuning. It may start a little late, miss very
+  short drives, or split a trip at a stop longer than 5 minutes (use Merge to join them).
+  Some phones (Samsung especially) block background apps: set OpenMiles to Unrestricted
+  battery if drives are missed.
+- If GPS is lost (a tunnel or garage), the gap is counted as a straight line when the signal
+  returns, so a winding road can read a little short. Compare a few drives with your car's
+  trip meter.
 - A drive in progress is saved every 30 seconds, so if Android closes the app, at most the last
   30 seconds are lost.
-- No map yet.
-- No backup. Auto-backup to Google is turned off on purpose so drives never leave the phone.
-- GPS distance is a straight-line sum between points, so it can read a little short on winding roads. Compare a few drives with your car's trip meter.
-- Drives shorter than about 50 meters are thrown away on purpose.
-- The debug build is for testing. A signed release build comes later.
+- Drives shorter than about 50 meters (a quarter mile for automatic drives) are not kept.
+- No map view yet, and places are named by you, not looked up, because street addresses would
+  need the internet.
+- Android only for now.
 
 ## Fonts
 
