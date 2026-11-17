@@ -102,6 +102,15 @@ jobs:
           name: OpenMiles-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
+      - name: Check the changelog has this version
+        run: |
+          V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "App version: $V"
+          if ! grep -q "^## \[$V\]" CHANGELOG.md; then
+            echo "FAIL: CHANGELOG.md has no section for version $V. Add one before releasing."
+            exit 1
+          fi
+
       - name: Build the signed release app (only once the signing key is set up)
         env:
           KEYSTORE_B64: ${{ secrets.OPENMILES_KEYSTORE_BASE64 }}
@@ -157,26 +166,33 @@ jobs:
       group: publish-latest
       cancel-in-progress: false
     steps:
+      # Checkout first: it cleans the folder, which would delete a file downloaded before it.
+      - uses: actions/checkout@v4
+
       - name: Get the signed app from the build
         uses: actions/download-artifact@v4
         with:
           name: OpenMiles-release-apk
           path: apk
 
-      - name: Replace the "latest" download with this build
+      - name: Publish this version on the Releases page
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
-          mv apk/app-release.apk OpenMiles.apk
-          gh release delete latest --repo "$REPO" --cleanup-tag --yes || true
-          gh release create latest OpenMiles.apk \
-            --repo "$REPO" \
-            --target "$GITHUB_SHA" \
-            --title "OpenMiles (newest build)" \
-            --latest \
-            --notes "Newest signed build, made automatically from commit ${GITHUB_SHA::7}.
-
-          Install on Android: tap OpenMiles.apk below, then open the download. It installs over an earlier OpenMiles without losing your drives.
-
-          This is a beta. See the README for what has and has not been tested."
+          V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          FILE="OpenMiles-v$V.apk"
+          mv apk/app-release.apk "$FILE"
+          # The notes for this version, taken from CHANGELOG.md.
+          awk -v v="$V" '$0 ~ "^## \\[" v "\\]" {on=1; next} /^## \[/ {on=0} on' CHANGELOG.md > notes.md
+          printf '\nInstall on Android: tap %s below, then open the download. It installs over an earlier OpenMiles and keeps your drives.\n' "$FILE" >> notes.md
+          # Remove the old single "latest" release from before versions were used.
+          gh release delete latest --repo "$REPO" --cleanup-tag --yes 2>/dev/null || true
+          if gh release view "v$V" --repo "$REPO" > /dev/null 2>&1; then
+            # Same version rebuilt: replace its file and notes, keep the release.
+            gh release upload "v$V" "$FILE" --repo "$REPO" --clobber
+            gh release edit "v$V" --repo "$REPO" --notes-file notes.md --latest
+          else
+            gh release create "v$V" "$FILE" --repo "$REPO" --target "$GITHUB_SHA" \
+              --title "OpenMiles $V" --notes-file notes.md --latest
+          fi

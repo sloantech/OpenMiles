@@ -661,6 +661,10 @@ fun SettingsScreen(vm: AppViewModel) {
                     "This app has no internet access, so your drives never leave this phone.",
                 style = MaterialTheme.typography.bodyMedium
             )
+            Text(
+                "Version ${appVersion(LocalContext.current)}",
+                style = MaterialTheme.typography.bodySmall
+            )
             Spacer(Modifier.height(8.dp))
             if (AppConfig.DONATE_URL.isNotBlank()) {
                 Button(onClick = { openLink(context, AppConfig.DONATE_URL) }) {
@@ -927,6 +931,15 @@ private fun shareLog(context: Context) {
     } catch (e: Exception) {
         Toast.makeText(context, "Could not share the log.", Toast.LENGTH_LONG).show()
     }
+}
+
+private fun appVersion(context: Context): String = try {
+    @Suppress("DEPRECATION")
+    val info = context.packageManager.getPackageInfo(context.packageName, 0)
+    @Suppress("DEPRECATION")
+    "${info.versionName} (build ${info.versionCode})"
+} catch (e: Exception) {
+    "unknown"
 }
 
 private fun openAppSettings(context: Context) {
