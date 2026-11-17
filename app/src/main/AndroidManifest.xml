@@ -53,6 +53,11 @@
             android:name=".tracking.DetectionReceiver"
             android:exported="false" />
 
+        <!-- The weekly "drives to classify" reminder. Other apps cannot reach it. -->
+        <receiver
+            android:name=".tracking.ReminderReceiver"
+            android:exported="false" />
+
         <!-- Turns detection back on after a restart or update. Only the system can send these. -->
         <receiver
             android:name=".tracking.BootReceiver"

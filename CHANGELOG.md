@@ -3,6 +3,13 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.11.0] - 2026-11-17
+
+### Added
+- A weekly reminder on Sunday evenings when drives still need a category. It only appears when
+  there is something to classify, never sends anything off the phone, and can be turned off in
+  Settings, under Weekly reminder.
+
 ## [0.10.0] - 2026-11-17
 
 ### Added

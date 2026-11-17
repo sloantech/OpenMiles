@@ -148,6 +148,9 @@ interface TripDao {
     @Query("SELECT COUNT(*) FROM trips")
     suspend fun count(): Int
 
+    @Query("SELECT COUNT(*) FROM trips WHERE categoryId IS NULL OR categoryId NOT IN (SELECT id FROM categories)")
+    suspend fun countUnclassified(): Int
+
     // Plain (non-suspend) versions for backup and restore, which run on a background thread
     // inside one database transaction. Never call these from the main thread.
     @Query("SELECT * FROM trips ORDER BY id LIMIT :limit OFFSET :offset")

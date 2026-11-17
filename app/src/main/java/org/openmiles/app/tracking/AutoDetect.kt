@@ -304,7 +304,10 @@ class BootReceiver : BroadcastReceiver() {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED -> AutoDetect.register(context, "phone restarted")
             Intent.ACTION_MY_PACKAGE_REPLACED -> AutoDetect.register(context, "app updated")
+            else -> return
         }
+        // Android also forgets alarms after a restart.
+        ClassifyReminder.schedule(context)
     }
 }
 

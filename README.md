@@ -30,6 +30,7 @@ so compare your first weeks of drives against another tracker or your odometer.
 - Backup and restore: save one backup file wherever you like, and restore it on a new phone.
   Restoring only adds what is missing and never deletes anything.
 - Light and dark looks that follow your phone, or pick one in Settings.
+- A gentle weekly reminder when drives still need a category (can be turned off).
 - A private detection log in Settings shows why each drive started, ended, or was not kept.
 - The version number is shown in Settings, under About.
 

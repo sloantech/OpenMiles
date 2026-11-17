@@ -84,6 +84,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
@@ -120,6 +121,7 @@ import org.openmiles.app.domain.TripEdit
 import org.openmiles.app.domain.UpdateReminder
 import org.openmiles.app.domain.Validation
 import org.openmiles.app.tracking.AutoDetect
+import org.openmiles.app.tracking.ClassifyReminder
 import org.openmiles.app.tracking.DiagLog
 import org.openmiles.app.tracking.LiveTrip
 import org.openmiles.app.tracking.TrackingService
@@ -1276,6 +1278,10 @@ fun SettingsScreen(vm: AppViewModel) {
             Spacer(Modifier.height(16.dp))
         }
         item {
+            ReminderSection()
+            Spacer(Modifier.height(16.dp))
+        }
+        item {
             AutoDetectSection()
             Spacer(Modifier.height(8.dp))
             DetectionLogSection()
@@ -1364,6 +1370,36 @@ fun SettingsScreen(vm: AppViewModel) {
             onAdd = { kind, date, dollars -> vm.addRate(kind, date, dollars) },
             onClose = { showAddRate = false }
         )
+    }
+}
+
+@Composable
+private fun ReminderSection() {
+    val context = LocalContext.current
+    var on by remember { mutableStateOf(ClassifyReminder.isOn(context)) }
+    val notifyOk = NotificationManagerCompat.from(context).areNotificationsEnabled()
+    val askNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Weekly reminder", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "On Sunday evenings, a short note if any drives still need a category. Nothing is sent anywhere.",
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        Switch(checked = on, onCheckedChange = {
+            ClassifyReminder.setOn(context, it)
+            on = it
+            if (it && !notifyOk && Build.VERSION.SDK_INT >= 33) askNotify.launch(Manifest.permission.POST_NOTIFICATIONS)
+        })
+    }
+    if (on && !notifyOk) {
+        Text(
+            "Notifications are off for OpenMiles, so the reminder can't show. Turn them on in app settings.",
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall
+        )
+        TextButton(onClick = { openAppSettings(context) }) { Text("Open app settings") }
     }
 }
 

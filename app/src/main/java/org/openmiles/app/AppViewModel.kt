@@ -42,6 +42,7 @@ import org.openmiles.app.domain.TripEdit
 import org.openmiles.app.domain.Validation
 import org.openmiles.app.domain.WorkHours
 import org.openmiles.app.tracking.AutoDetect
+import org.openmiles.app.tracking.ClassifyReminder
 import org.openmiles.app.tracking.DraftStore
 import org.openmiles.app.tracking.LiveTrip
 import org.openmiles.app.tracking.TrackingState
@@ -67,6 +68,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         // Detection can be forgotten (for example after a phone update). Sign up again.
         AutoDetect.register(app)
+        ClassifyReminder.schedule(app)
     }
 
     /** Swipe right or left: use the built-in category for that kind. */
