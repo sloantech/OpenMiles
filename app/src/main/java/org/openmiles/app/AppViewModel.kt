@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import org.openmiles.app.data.AppDatabase
 import org.openmiles.app.data.Category
 import org.openmiles.app.data.Kind
+import org.openmiles.app.data.Odometer
 import org.openmiles.app.data.Place
 import org.openmiles.app.data.Rate
 import org.openmiles.app.data.Rules
@@ -30,6 +31,7 @@ import org.openmiles.app.domain.BackupCategory
 import org.openmiles.app.domain.BackupCodec
 import org.openmiles.app.domain.BackupInfo
 import org.openmiles.app.domain.BackupMerge
+import org.openmiles.app.domain.BackupOdometer
 import org.openmiles.app.domain.BackupPlace
 import org.openmiles.app.domain.BackupRate
 import org.openmiles.app.domain.BackupTrip
@@ -228,6 +230,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _rulesMessage.value = null
     }
 
+    // ---- Parking, tolls, odometer and report details ---------------------------------------------
+
+    fun setExpenses(tripId: Long, parkingCents: Long, tollsCents: Long) {
+        if (parkingCents !in 0..Validation.MAX_EXPENSE_CENTS || tollsCents !in 0..Validation.MAX_EXPENSE_CENTS) return
+        viewModelScope.launch { db.tripDao().setExpenses(tripId, parkingCents, tollsCents) }
+    }
+
+    val odometer = db.odometerDao().observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun saveOdometer(year: Int, startMiles: Double?, endMiles: Double?) {
+        if (year !in 1990..2200) return
+        if (startMiles != null && !Validation.isValidOdometer(startMiles)) return
+        if (endMiles != null && !Validation.isValidOdometer(endMiles)) return
+        viewModelScope.launch { db.odometerDao().save(Odometer(year, startMiles, endMiles)) }
+    }
+
+    private val reportPrefs = app.getSharedPreferences("report", Context.MODE_PRIVATE)
+    private val _reportName = MutableStateFlow(reportPrefs.getString("name", "") ?: "")
+    val reportName: StateFlow<String> = _reportName
+    private val _reportVehicle = MutableStateFlow(reportPrefs.getString("vehicle", "") ?: "")
+    val reportVehicle: StateFlow<String> = _reportVehicle
+
+    fun saveReportDetails(name: String, vehicle: String) {
+        val n = name.trim().take(60)
+        val v = vehicle.trim().take(60)
+        reportPrefs.edit().putString("name", n).putString("vehicle", v).apply()
+        _reportName.value = n
+        _reportVehicle.value = v
+    }
+
     // ---- Editing, splitting and merging drives -------------------------------------------------
 
     /** Changes a drive's times and miles. The drive is marked as edited in reports. */
@@ -399,18 +432,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     BackupPlace(it.name, it.lat, it.lng, it.radiusMeters, it.categoryId, it.ignoreDrives)
                 }
                 val work = WorkHoursStore.load(app)
+                val readings = db.odometerDao().all().map { BackupOdometer(it.year, it.startMiles, it.endMiles) }
                 val expected = db.tripDao().count()
                 val out = app.contentResolver.openOutputStream(uri, "wt")
                     ?: throw IllegalStateException("no stream")
                 val written = out.use { stream ->
                     val writer = OutputStreamWriter(stream, Charsets.UTF_8).buffered()
-                    val n = BackupCodec.write(writer, BuildConfig.VERSION_NAME, System.currentTimeMillis(), categories, rates, places, work) { emit ->
+                    val n = BackupCodec.write(writer, BuildConfig.VERSION_NAME, System.currentTimeMillis(), categories, rates, places, work, readings) { emit ->
                         var offset = 0
                         while (true) {
                             val page = db.tripDao().pageNow(BACKUP_PAGE, offset)
                             if (page.isEmpty()) break
                             page.forEach {
-                                emit(BackupTrip(it.startTime, it.endTime, it.distanceMeters, it.categoryId, it.notes, it.route, it.source, it.edited))
+                                emit(
+                                    BackupTrip(
+                                        it.startTime, it.endTime, it.distanceMeters, it.categoryId, it.notes,
+                                        it.route, it.source, it.edited, it.parkingCents, it.tollsCents
+                                    )
+                                )
                             }
                             offset += page.size
                         }
@@ -526,6 +565,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             addedPlaces++
                         }
                     }
+                    // Odometer readings: only for years this phone has none.
+                    ready.info.odometer.forEach {
+                        db.odometerDao().insertIfMissingNow(Odometer(it.year, it.startMiles, it.endMiles))
+                    }
                     // Work hours: only if this phone has never set them.
                     val w = ready.info.workHours
                     if (w != null && !WorkHoursStore.isSet(app)) {
@@ -547,7 +590,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                     notes = t.notes,
                                     route = t.route,
                                     source = t.source,
-                                    edited = t.edited
+                                    edited = t.edited,
+                                    parkingCents = t.parkingCents,
+                                    tollsCents = t.tollsCents
                                 )
                                 if (batch.size >= BACKUP_PAGE) {
                                     db.tripDao().insertAllNow(batch.toList())

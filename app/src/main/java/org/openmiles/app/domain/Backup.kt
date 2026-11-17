@@ -22,8 +22,12 @@ data class BackupTrip(
     val notes: String,
     val route: String,
     val source: String,
-    val edited: Boolean = false
+    val edited: Boolean = false,
+    val parkingCents: Long = 0,
+    val tollsCents: Long = 0
 )
+
+data class BackupOdometer(val year: Int, val startMiles: Double?, val endMiles: Double?)
 
 data class BackupPlace(
     val name: String,
@@ -45,7 +49,8 @@ data class BackupInfo(
     val rejected: Int,
     val places: List<BackupPlace> = emptyList(),
     /** Null when the backup has no work-hours rule (for example, from an older version). */
-    val workHours: WorkHours? = null
+    val workHours: WorkHours? = null,
+    val odometer: List<BackupOdometer> = emptyList()
 )
 
 object BackupCodec {
@@ -73,6 +78,7 @@ object BackupCodec {
         rates: List<BackupRate>,
         places: List<BackupPlace> = emptyList(),
         workHours: WorkHours? = null,
+        odometer: List<BackupOdometer> = emptyList(),
         eachTrip: (emit: (BackupTrip) -> Unit) -> Unit
     ): Int {
         var count = 0
@@ -122,6 +128,15 @@ object BackupCodec {
             if (workHours.categoryId != null) w.name("categoryId").value(workHours.categoryId)
             w.endObject()
         }
+        w.name("odometer").beginArray()
+        odometer.forEach {
+            w.beginObject()
+            w.name("year").value(it.year.toLong())
+            if (it.startMiles != null) w.name("startMiles").value(it.startMiles)
+            if (it.endMiles != null) w.name("endMiles").value(it.endMiles)
+            w.endObject()
+        }
+        w.endArray()
         w.name("trips").beginArray()
         eachTrip { t ->
             w.beginObject()
@@ -133,6 +148,8 @@ object BackupCodec {
             w.name("route").value(t.route)
             w.name("source").value(t.source)
             if (t.edited) w.name("edited").value(true)
+            if (t.parkingCents > 0) w.name("parkingCents").value(t.parkingCents)
+            if (t.tollsCents > 0) w.name("tollsCents").value(t.tollsCents)
             w.endObject()
             count++
         }
@@ -157,6 +174,7 @@ object BackupCodec {
         val rates = mutableListOf<BackupRate>()
         val places = mutableListOf<BackupPlace>()
         var work: WorkHours? = null
+        val odometer = mutableListOf<BackupOdometer>()
         var trips = 0
         var rejected = 0
         r.beginObject()
@@ -179,6 +197,10 @@ object BackupCodec {
                     if (p != null && places.size < MAX_PLACES) places += p else rejected++
                 }
                 "workHours" -> work = readWorkHours(r)
+                "odometer" -> array(r) {
+                    val o = readOdometer(r)
+                    if (o != null && odometer.size < 200 && odometer.none { it.year == o.year }) odometer += o else rejected++
+                }
                 "trips" -> {
                     // The header must come first, so a wrong file is refused before any drive is used.
                     if (format != FORMAT) throw notBackup()
@@ -200,7 +222,7 @@ object BackupCodec {
         }
         r.endObject()
         if (format != FORMAT || version < 1) throw notBackup()
-        return BackupInfo(version, appVersion, createdAt, categories, rates, trips, rejected, places, work)
+        return BackupInfo(version, appVersion, createdAt, categories, rates, trips, rejected, places, work, odometer)
     }
 
     private fun notBackup() = NotABackup("That file is not an OpenMiles backup.")
@@ -333,6 +355,26 @@ object BackupCodec {
         return WorkHours(enabled, WorkHours.parseDays(days), s, e, cat?.toLong())
     }
 
+    private fun readOdometer(r: JsonReader): BackupOdometer? {
+        var year: Double? = null
+        var start: Double? = null
+        var end: Double? = null
+        if (!obj(r) {
+                when (it) {
+                    "year" -> year = num(r)
+                    "startMiles" -> start = num(r)
+                    "endMiles" -> end = num(r)
+                    else -> r.skipValue()
+                }
+            }
+        ) return null
+        val y = year?.toInt() ?: return null
+        if (y !in 1990..2200) return null
+        if (start != null && !Validation.isValidOdometer(start)) return null
+        if (end != null && !Validation.isValidOdometer(end)) return null
+        return BackupOdometer(y, start, end)
+    }
+
     private fun readTrip(r: JsonReader): BackupTrip? {
         var start: Double? = null
         var end: Double? = null
@@ -342,6 +384,8 @@ object BackupCodec {
         var route = ""
         var source = "gps"
         var edited = false
+        var parking: Double? = null
+        var tolls: Double? = null
         var tooLong = false
         if (!obj(r) {
                 when (it) {
@@ -356,6 +400,8 @@ object BackupCodec {
                     }
                     "source" -> source = str(r) ?: "gps"
                     "edited" -> edited = bool(r) ?: false
+                    "parkingCents" -> parking = num(r)
+                    "tollsCents" -> tolls = num(r)
                     else -> r.skipValue()
                 }
             }
@@ -365,7 +411,10 @@ object BackupCodec {
         val m = meters ?: return null
         if (tooLong || s <= 0 || e < s || !m.isFinite() || m < 0.0 || m > MAX_METERS) return null
         if (source !in SOURCES) return null
-        return BackupTrip(s, e, m, cat?.toLong(), notes, route, source, edited)
+        val p = parking?.toLong() ?: 0L
+        val tl = tolls?.toLong() ?: 0L
+        if (p !in 0..Validation.MAX_EXPENSE_CENTS || tl !in 0..Validation.MAX_EXPENSE_CENTS) return null
+        return BackupTrip(s, e, m, cat?.toLong(), notes, route, source, edited, p, tl)
     }
 }
 

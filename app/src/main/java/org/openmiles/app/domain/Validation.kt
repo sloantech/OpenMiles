@@ -25,6 +25,26 @@ object Validation {
             uri.userInfo == null
     }
 
+    /** Most a single parking or toll charge can be, in cents ($1,000). */
+    const val MAX_EXPENSE_CENTS = 100_000L
+
+    /** Reads "12.50", "$12.5" or "" (zero) into cents. Null for anything else. */
+    fun parseCents(text: String): Long? {
+        val t = text.trim().removePrefix("$").trim()
+        if (t.isEmpty()) return 0L
+        if (!Regex("""^\d{1,6}(\.\d{0,2})?$""").matches(t)) return null
+        val parts = t.split(".")
+        val dollars = parts[0].toLong()
+        val cents = if (parts.size > 1) parts[1].padEnd(2, '0').toLong() else 0L
+        val total = dollars * 100 + cents
+        return if (total <= MAX_EXPENSE_CENTS) total else null
+    }
+
+    fun centsText(cents: Long): String = if (cents == 0L) "" else String.format(java.util.Locale.US, "%d.%02d", cents / 100, cents % 100)
+
+    /** Odometer readings: zero up to a million miles. */
+    fun isValidOdometer(miles: Double?): Boolean = miles != null && miles.isFinite() && miles >= 0.0 && miles < 1_000_000.0
+
     /** Hand-entered drives: more than zero and at most 1,000 miles. */
     const val MAX_MANUAL_MILES = 1_000.0
 

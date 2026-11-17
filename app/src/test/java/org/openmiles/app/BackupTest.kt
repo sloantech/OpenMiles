@@ -8,6 +8,7 @@ import org.junit.Test
 import org.openmiles.app.domain.BackupCategory
 import org.openmiles.app.domain.BackupCodec
 import org.openmiles.app.domain.BackupMerge
+import org.openmiles.app.domain.BackupOdometer
 import org.openmiles.app.domain.BackupPlace
 import org.openmiles.app.domain.WorkHours
 import java.time.DayOfWeek
@@ -26,15 +27,16 @@ class BackupTest {
     private val trips = listOf(
         BackupTrip(1_700_000_000_000, 1_700_000_600_000, 16093.4, 7, "Line one\nline two, with \"quotes\"", "40.1,-75.2,1;40.2,-75.3,2", "gps"),
         BackupTrip(1_700_100_000_000, 1_700_100_600_000, 500.0, null, "", "", "manual"),
-        BackupTrip(1_700_200_000_000, 1_700_200_600_000, 800.0, null, "", "", "gps", edited = true)
+        BackupTrip(1_700_200_000_000, 1_700_200_600_000, 800.0, null, "", "", "gps", edited = true, parkingCents = 1250, tollsCents = 300)
     )
 
     private val places = listOf(BackupPlace("Office", 40.1, -75.2, 150.0, 7, false), BackupPlace("Home", 40.0, -75.0, 200.0, null, true))
+    private val odo = listOf(BackupOdometer(2026, 10_000.0, null), BackupOdometer(2025, 8_000.5, 10_000.0))
     private val work = WorkHours(true, setOf(DayOfWeek.MONDAY, DayOfWeek.FRIDAY), 480, 1020, 1)
 
     private fun backupText(t: List<BackupTrip> = trips): String {
         val out = StringWriter()
-        val n = BackupCodec.write(out, "0.6.0", 1_800_000_000_000, cats, rates, places, work) { emit -> t.forEach(emit) }
+        val n = BackupCodec.write(out, "0.6.0", 1_800_000_000_000, cats, rates, places, work, odo) { emit -> t.forEach(emit) }
         assertEquals(t.size, n)
         return out.toString()
     }
@@ -51,6 +53,7 @@ class BackupTest {
         assertEquals(3, info.trips)
         assertEquals(places, info.places)
         assertEquals(work, info.workHours)
+        assertEquals(odo, info.odometer)
         assertEquals(0, info.rejected)
     }
 
@@ -88,6 +91,17 @@ class BackupTest {
         val info = BackupCodec.read(StringReader(text)) {}
         assertEquals(places, info.places)
         assertEquals(null, info.workHours)
+    }
+
+    @Test
+    fun badExpensesAndOdometerAreRejected() {
+        val text = backupText()
+            .replace("\"parkingCents\":1250", "\"parkingCents\":99999999")
+            .replace("\"year\":2025", "\"year\":1066")
+        val got = mutableListOf<BackupTrip>()
+        val info = BackupCodec.read(StringReader(text)) { got += it }
+        assertEquals(2, got.size) // the drive with an impossible parking charge is left out
+        assertEquals(listOf(odo[0]), info.odometer)
     }
 
     @Test

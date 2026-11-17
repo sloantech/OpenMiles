@@ -116,7 +116,7 @@ object Csv {
     ): String {
         val byId = categories.associateBy { it.id }
         val sb = StringBuilder()
-        sb.append("Date,Start,End,Miles,Category,Type,Rate per mile,Value,Notes,Source\n")
+        sb.append("Date,Start,End,Miles,Category,Type,Rate per mile,Value,Parking,Tolls,Notes,Source\n")
         trips
             .filter { Calc.toDate(it.startTime) in range }
             .sortedBy { it.startTime }
@@ -134,6 +134,8 @@ object Csv {
                         esc(cat?.let { Kind.label(it.kind) } ?: ""),
                         String.format(Locale.US, "%.3f", rate),
                         String.format(Locale.US, "%.2f", value),
+                        String.format(Locale.US, "%d.%02d", t.parkingCents / 100, t.parkingCents % 100),
+                        String.format(Locale.US, "%d.%02d", t.tollsCents / 100, t.tollsCents % 100),
                         esc(t.notes),
                         esc(Source.exportLabel(t.source, t.edited))
                     ).joinToString(",")

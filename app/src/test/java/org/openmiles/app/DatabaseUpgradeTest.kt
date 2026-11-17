@@ -10,6 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.openmiles.app.data.AppDatabase
+import org.openmiles.app.data.Odometer
 import org.openmiles.app.data.Place
 import org.openmiles.app.data.Source
 import org.openmiles.app.data.Trip
@@ -196,6 +197,63 @@ class DatabaseUpgradeTest {
             assertEquals(9L, runBlocking { db.tripDao().get(page[0].id) }!!.categoryId)
             runBlocking { db.placeDao().clearCategory(5) }
             assertEquals(null, db.placeDao().allNow()[0].categoryId)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun version4DatabaseUpgradesWithExpensesAndOdometer() {
+        val name = "upgrade-test-v4.db"
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name).apply { parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { old ->
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `trips` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`startTime` INTEGER NOT NULL, `endTime` INTEGER NOT NULL, `distanceMeters` REAL NOT NULL, " +
+                    "`categoryId` INTEGER, `notes` TEXT NOT NULL, `route` TEXT NOT NULL, " +
+                    "`source` TEXT NOT NULL DEFAULT 'gps', `edited` INTEGER NOT NULL DEFAULT 0)"
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `categories` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`name` TEXT NOT NULL, `kind` TEXT NOT NULL, `builtIn` INTEGER NOT NULL)"
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `rates` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`kind` TEXT NOT NULL, `effectiveFrom` TEXT NOT NULL, `dollarsPerMile` REAL NOT NULL)"
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `places` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`name` TEXT NOT NULL, `lat` REAL NOT NULL, `lng` REAL NOT NULL, " +
+                    "`radiusMeters` REAL NOT NULL, `categoryId` INTEGER, " +
+                    "`ignoreDrives` INTEGER NOT NULL DEFAULT 0)"
+            )
+            old.execSQL(
+                "INSERT INTO trips (startTime, endTime, distanceMeters, categoryId, notes, route, source, edited) " +
+                    "VALUES (1700000000000, 1700000600000, 5000.0, NULL, 'from v4', '', 'gps', 0)"
+            )
+            old.execSQL("INSERT INTO places (name, lat, lng, radiusMeters, categoryId, ignoreDrives) VALUES ('Home', 40, -75, 150, NULL, 1)")
+            old.version = 4
+        }
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(*AppDatabase.ALL_MIGRATIONS)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val trips = runBlocking { db.tripDao().observeSummaries().first() }
+            assertEquals("from v4", trips[0].notes)
+            assertEquals(0L, trips[0].parkingCents)
+            assertEquals(true, db.placeDao().allNow()[0].ignoreDrives)
+            runBlocking {
+                db.tripDao().setExpenses(trips[0].id, 1250, 300)
+                db.odometerDao().save(Odometer(2026, 10_000.0, null))
+                db.odometerDao().save(Odometer(2026, 10_000.0, 12_000.0))
+            }
+            val again = runBlocking { db.tripDao().observeSummaries().first() }[0]
+            assertEquals(1250L, again.parkingCents)
+            assertEquals(300L, again.tollsCents)
+            assertEquals(listOf(Odometer(2026, 10_000.0, 12_000.0)), db.odometerDao().allNow())
+            assertEquals(-1L, db.odometerDao().insertIfMissingNow(Odometer(2026, 1.0, 2.0)))
         } finally {
             db.close()
         }

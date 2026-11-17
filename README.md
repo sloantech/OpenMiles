@@ -19,8 +19,9 @@ so compare your first weeks of drives against another tracker or your odometer.
 - Tap a drive to pick any category (Business, Personal, Medical, Charity, or your own) and add notes.
 - Mileage value uses IRS rates by date (2025 and 2026 rates are built in, including the July 2026 change).
   You can add new rates in Settings.
-- Reports for any date range (this month, last quarter, a custom range) with totals by category
-  and a CSV spreadsheet export.
+- Reports for any date range (this month, last quarter, a custom range) with totals by category,
+  a printable PDF mileage log, and a CSV spreadsheet export.
+- Parking and tolls on each drive, and yearly odometer readings for IRS records.
 - Auto-classify rules: work hours, and named places like Home or Office, give new drives a
   category automatically. Places can also ignore short moves, like in a parking lot.
 - Edit, split or merge drives. Changed drives are marked "edited" in reports.
@@ -35,7 +36,7 @@ so compare your first weeks of drives against another tracker or your odometer.
 ## What comes next
 
 - Import drives from MileIQ (waiting on a sample export file)
-- PDF reports and a map view
+- A map view (it needs care, because map pictures normally come from the internet)
 
 ## How to install it on your phone
 

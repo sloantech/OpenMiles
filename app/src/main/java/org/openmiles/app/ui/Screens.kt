@@ -113,6 +113,8 @@ import org.openmiles.app.domain.Csv
 import org.openmiles.app.domain.DateRange
 import org.openmiles.app.domain.ImportedDrive
 import org.openmiles.app.domain.Pause
+import org.openmiles.app.domain.Report
+import org.openmiles.app.domain.ReportData
 import org.openmiles.app.domain.TimelineImport
 import org.openmiles.app.domain.TripEdit
 import org.openmiles.app.domain.UpdateReminder
@@ -512,6 +514,7 @@ fun DrivesScreen(vm: AppViewModel) {
             trip = editing,
             next = next,
             onNamePlace = { useEnd, name, cat -> vm.addPlaceFromTrip(editing.id, useEnd, name, cat) },
+            onSaveExpenses = { p, t -> vm.setExpenses(editing.id, p, t) },
             onEdit = {
                 formFor = editing.id
                 editingId = null
@@ -797,6 +800,7 @@ private fun TripRow(
 private fun TripDialog(
     trip: TripSummary,
     next: TripSummary?,
+    onSaveExpenses: (parkingCents: Long, tollsCents: Long) -> Unit,
     onNamePlace: (useEnd: Boolean, name: String, categoryId: Long?) -> Unit,
     onEdit: () -> Unit,
     onSplit: () -> Unit,
@@ -808,12 +812,24 @@ private fun TripDialog(
     onClose: () -> Unit
 ) {
     var notes by remember(trip.id) { mutableStateOf(trip.notes) }
+    var parkingText by remember(trip.id) { mutableStateOf(Validation.centsText(trip.parkingCents)) }
+    var tollsText by remember(trip.id) { mutableStateOf(Validation.centsText(trip.tollsCents)) }
+    val parkingCents = Validation.parseCents(parkingText)
+    val tollsCents = Validation.parseCents(tollsText)
+    fun saveAll() {
+        onSaveNotes(notes)
+        if (parkingCents != null && tollsCents != null &&
+            (parkingCents != trip.parkingCents || tollsCents != trip.tollsCents)
+        ) {
+            onSaveExpenses(parkingCents, tollsCents)
+        }
+    }
     var confirmDelete by remember(trip.id) { mutableStateOf(false) }
     var naming by remember(trip.id) { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = {
-            onSaveNotes(notes)
+            saveAll()
             onClose()
         },
         title = { Text("${Calc.fmtDate(trip.startTime)}, ${Calc.fmtMiles(trip.distanceMeters)}") },
@@ -844,20 +860,43 @@ private fun TripDialog(
                     label = { Text("Notes (client, purpose)") },
                     modifier = Modifier.fillMaxWidth()
                 )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = parkingText,
+                        onValueChange = { parkingText = it.filter { c -> c.isDigit() || c == '.' }.take(9) },
+                        label = { Text("Parking $") },
+                        singleLine = true,
+                        isError = parkingCents == null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = tollsText,
+                        onValueChange = { tollsText = it.filter { c -> c.isDigit() || c == '.' }.take(9) },
+                        label = { Text("Tolls $") },
+                        singleLine = true,
+                        isError = tollsCents == null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (parkingCents == null || tollsCents == null) {
+                    Text("Enter an amount like 12.50, up to $1,000.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
                 Spacer(Modifier.height(12.dp))
                 Text("Fix this drive", fontWeight = FontWeight.Bold)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = {
-                        onSaveNotes(notes)
+                        saveAll()
                         onEdit()
                     }) { Text("Edit") }
                     OutlinedButton(onClick = {
-                        onSaveNotes(notes)
+                        saveAll()
                         onSplit()
                     }) { Text("Split") }
                     if (next != null) {
                         OutlinedButton(onClick = {
-                            onSaveNotes(notes)
+                            saveAll()
                             onMerge()
                         }) { Text("Merge with next") }
                     }
@@ -874,7 +913,7 @@ private fun TripDialog(
         },
         confirmButton = {
             TextButton(onClick = {
-                onSaveNotes(notes)
+                saveAll()
                 onClose()
             }) { Text("Done") }
         },
@@ -930,6 +969,9 @@ fun ReportsScreen(vm: AppViewModel) {
     val trips by vm.trips.collectAsStateWithLifecycle()
     val categories by vm.categories.collectAsStateWithLifecycle()
     val rates by vm.rates.collectAsStateWithLifecycle()
+    val odometer by vm.odometer.collectAsStateWithLifecycle()
+    val name by vm.reportName.collectAsStateWithLifecycle()
+    val vehicle by vm.reportVehicle.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val today = LocalDate.now()
     val thisYear = DateRange.year(today.year)
@@ -1047,10 +1089,135 @@ fun ReportsScreen(vm: AppViewModel) {
             }
         }
 
+        val business = rangeTrips.filter { byId[it.categoryId]?.kind == Kind.BUSINESS }
+        val parking = business.sumOf { it.parkingCents }
+        val tolls = business.sumOf { it.tollsCents }
+        if (parking + tolls > 0) {
+            Text(
+                "Business parking ${Report.money(parking)} and tolls ${Report.money(tolls)}. These are deductible on top of mileage.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+
+        // Odometer readings for the year this report starts in.
+        val year = range.from.year
+        val reading = odometer.firstOrNull { it.year == year }
+        OdometerCard(year, reading?.startMiles, reading?.endMiles) { start, end -> vm.saveOdometer(year, start, end) }
+
+        ReportDetailsCard(name, vehicle) { n, v -> vm.saveReportDetails(n, v) }
+
         Button(
+            onClick = {
+                val wholeYear = range == DateRange.year(year)
+                sharePdf(
+                    context,
+                    Report.build(
+                        range, trips, categories, rates, name, vehicle,
+                        if (wholeYear) reading?.startMiles else null,
+                        if (wholeYear) reading?.endMiles else null,
+                        Calc.fmtDay(LocalDate.now())
+                    ),
+                    range
+                )
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Export these dates as a PDF mileage log") }
+        OutlinedButton(
             onClick = { shareCsv(context, range, trips, categories, rates) },
             modifier = Modifier.fillMaxWidth()
-        ) { Text("Export these dates as spreadsheet (CSV)") }
+        ) { Text("Export these dates as a spreadsheet (CSV)") }
+    }
+}
+
+@Composable
+private fun OdometerCard(year: Int, start: Double?, end: Double?, onSave: (Double?, Double?) -> Unit) {
+    var startText by remember(year, start) { mutableStateOf(start?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "") }
+    var endText by remember(year, end) { mutableStateOf(end?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "") }
+    val s = startText.toDoubleOrNull()
+    val e = endText.toDoubleOrNull()
+    val okStart = startText.isBlank() || Validation.isValidOdometer(s)
+    val okEnd = endText.isBlank() || Validation.isValidOdometer(e)
+    val total = Report.odometerTotal(s, e)
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Odometer for $year", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "IRS records ask for the total miles you drove in the year. Write down your odometer on " +
+                    "January 1 and December 31. The PDF shows them when you export a whole year.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = startText,
+                    onValueChange = { startText = it.filter { c -> c.isDigit() || c == '.' }.take(9) },
+                    label = { Text("Jan 1") },
+                    singleLine = true,
+                    isError = !okStart,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextField(
+                    value = endText,
+                    onValueChange = { endText = it.filter { c -> c.isDigit() || c == '.' }.take(9) },
+                    label = { Text("Dec 31") },
+                    singleLine = true,
+                    isError = !okEnd,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            if (s != null && e != null && e < s) {
+                Text("The Dec 31 reading should be higher than Jan 1.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            } else if (total != null) {
+                Text(String.format(java.util.Locale.US, "%,.1f miles driven in %d.", total, year), style = MaterialTheme.typography.bodyMedium)
+            }
+            TextButton(
+                onClick = { onSave(if (startText.isBlank()) null else s, if (endText.isBlank()) null else e) },
+                enabled = okStart && okEnd && (startText.isBlank() || s != null) && (endText.isBlank() || e != null)
+            ) { Text("Save readings") }
+        }
+    }
+}
+
+@Composable
+private fun ReportDetailsCard(name: String, vehicle: String, onSave: (String, String) -> Unit) {
+    var n by remember(name) { mutableStateOf(name) }
+    var v by remember(vehicle) { mutableStateOf(vehicle) }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("On the PDF", style = MaterialTheme.typography.titleMedium)
+            Text("Optional. Printed at the top of your mileage log.", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(value = n, onValueChange = { n = it.take(60) }, label = { Text("Your name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = v, onValueChange = { v = it.take(60) }, label = { Text("Vehicle, like 2019 Honda CR-V") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            TextButton(onClick = { onSave(n, v) }, enabled = n != name || v != vehicle) { Text("Save") }
+        }
+    }
+}
+
+private fun sharePdf(context: Context, data: ReportData, range: DateRange) {
+    try {
+        val dir = File(context.cacheDir, "exports").apply { mkdirs() }
+        dir.listFiles()?.forEach { it.delete() }
+        val file = File(dir, "openmiles-${range.from}-to-${range.to}.pdf")
+        file.outputStream().use { PdfReport.write(data, it) }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            clipData = ClipData.newRawUri("OpenMiles mileage log", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(send, "Share mileage log"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Could not create the PDF.", Toast.LENGTH_LONG).show()
     }
 }
 

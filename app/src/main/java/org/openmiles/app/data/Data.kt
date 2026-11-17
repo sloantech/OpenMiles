@@ -9,6 +9,7 @@ import androidx.room.Database
 import androidx.room.Delete
 import androidx.room.Entity
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
@@ -73,7 +74,10 @@ data class Trip(
     /** One of the [Source] values. Added in database version 2. */
     @ColumnInfo(defaultValue = Source.GPS) val source: String = Source.GPS,
     /** True once the date, times or miles were changed by hand, or the drive was split or merged. */
-    @ColumnInfo(defaultValue = "0") val edited: Boolean = false
+    @ColumnInfo(defaultValue = "0") val edited: Boolean = false,
+    /** Parking and tolls paid for this drive, in cents. Deductible on top of mileage for business. */
+    @ColumnInfo(defaultValue = "0") val parkingCents: Long = 0,
+    @ColumnInfo(defaultValue = "0") val tollsCents: Long = 0
 )
 
 /** Just the times of a drive, for checking overlaps. */
@@ -91,7 +95,9 @@ data class TripSummary(
     val categoryId: Long?,
     val notes: String,
     val source: String = Source.GPS,
-    val edited: Boolean = false
+    val edited: Boolean = false,
+    val parkingCents: Long = 0,
+    val tollsCents: Long = 0
 )
 
 /** A mileage rate that starts on a date. The newest one on or before the trip date wins. */
@@ -121,7 +127,7 @@ data class Place(
 @Dao
 interface TripDao {
     @Query(
-        "SELECT id, startTime, endTime, distanceMeters, categoryId, notes, source, edited " +
+        "SELECT id, startTime, endTime, distanceMeters, categoryId, notes, source, edited, parkingCents, tollsCents " +
             "FROM trips ORDER BY startTime DESC"
     )
     fun observeSummaries(): Flow<List<TripSummary>>
@@ -177,6 +183,9 @@ interface TripDao {
 
     @Query("UPDATE trips SET notes = :notes WHERE id = :id")
     suspend fun setNotes(id: Long, notes: String)
+
+    @Query("UPDATE trips SET parkingCents = :parking, tollsCents = :tolls WHERE id = :id")
+    suspend fun setExpenses(id: Long, parking: Long, tolls: Long)
 
     @Query("UPDATE trips SET categoryId = NULL WHERE categoryId = :categoryId")
     suspend fun clearCategory(categoryId: Long)
@@ -240,6 +249,32 @@ interface RateDao {
     suspend fun deleteFor(kind: String, effectiveFrom: String)
 }
 
+/** Odometer readings at the start and end of a year. IRS records ask for total miles driven. */
+@Entity(tableName = "odometer")
+data class Odometer(
+    @PrimaryKey val year: Int,
+    val startMiles: Double?,
+    val endMiles: Double?
+)
+
+@Dao
+interface OdometerDao {
+    @Query("SELECT * FROM odometer ORDER BY year DESC")
+    fun observeAll(): Flow<List<Odometer>>
+
+    @Query("SELECT * FROM odometer")
+    suspend fun all(): List<Odometer>
+
+    @Query("SELECT * FROM odometer")
+    fun allNow(): List<Odometer>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun save(reading: Odometer)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    fun insertIfMissingNow(reading: Odometer): Long
+}
+
 @Dao
 interface PlaceDao {
     @Query("SELECT * FROM places ORDER BY name")
@@ -268,8 +303,8 @@ interface PlaceDao {
 }
 
 @Database(
-    entities = [Trip::class, Category::class, Rate::class, Place::class],
-    version = 4,
+    entities = [Trip::class, Category::class, Rate::class, Place::class, Odometer::class],
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -277,6 +312,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun rateDao(): RateDao
     abstract fun placeDao(): PlaceDao
+    abstract fun odometerDao(): OdometerDao
 
     companion object {
         @Volatile
@@ -321,7 +357,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        /** Version 4 to 5: parking and tolls on drives, and yearly odometer readings. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `trips` ADD COLUMN `parkingCents` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `trips` ADD COLUMN `tollsCents` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `odometer` (`year` INTEGER NOT NULL, `startMiles` REAL, " +
+                        "`endMiles` REAL, PRIMARY KEY(`year`))"
+                )
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
     }
 }
 

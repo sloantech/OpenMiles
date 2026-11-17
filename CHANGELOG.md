@@ -3,6 +3,24 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.10.0] - 2026-11-17
+
+### Added
+- PDF mileage log (Reports, "Export these dates as a PDF mileage log"): a summary with miles and
+  value by type, business parking and tolls, and odometer totals for a whole year, then every
+  drive with date, times, miles, category, purpose, value and where it came from.
+- Parking and tolls on each drive (tap a drive). Business totals show in Reports, the PDF and
+  two new spreadsheet columns.
+- Odometer readings for January 1 and December 31 of each year (Reports). The PDF shows total
+  miles driven and the business share.
+- Optional name and vehicle printed at the top of the PDF.
+- Backups now include parking, tolls and odometer readings.
+
+### Changed
+- The spreadsheet export has new Parking and Tolls columns before Notes.
+- The database has new fields for parking and tolls and a table for odometer readings.
+  Existing drives are kept unchanged.
+
 ## [0.9.0] - 2026-11-17
 
 ### Added
