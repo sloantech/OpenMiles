@@ -115,7 +115,7 @@ class MileIqImportTest {
     }
 
     @Test fun acceptsAmPmAndSecondsAndByteOrderMark() {
-        val text = "﻿START_DATE*,END_DATE*,CATEGORY*,MILES*\r\n11/3/2026 5:29 PM,11/3/2026 5:31:30 PM,Business,1.0\r\n"
+        val text = "\uFEFFSTART_DATE*,END_DATE*,CATEGORY*,MILES*\r\n11/3/2026 5:29 PM,11/3/2026 5:31:30 PM,Business,1.0\r\n"
         val d = parse(text).drives.single()
         assertEquals(ms(2026, 11, 3, 17, 29), d.startMs)
     }

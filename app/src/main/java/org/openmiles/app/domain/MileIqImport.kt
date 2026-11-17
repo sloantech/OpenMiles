@@ -184,7 +184,9 @@ object MileIqImport {
             sb.append(buf, 0, n)
             if (sb.length > MAX_CHARS) throw NotAMileIqFile("That file is too large to be a MileIQ report.")
         }
-        return sb.toString().removePrefix("﻿")
+        val text = sb.toString()
+        // Skip the invisible byte-order mark some spreadsheet apps put at the start of a file.
+        return if (text.isNotEmpty() && text[0].code == 0xFEFF) text.substring(1) else text
     }
 
     private fun notMileIq() = NotAMileIqFile(
