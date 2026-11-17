@@ -22,6 +22,7 @@ import org.openmiles.app.data.AppDatabase
 import org.openmiles.app.data.Rules
 import org.openmiles.app.data.Trip
 import org.openmiles.app.domain.Draft
+import org.openmiles.app.domain.Pause
 import org.openmiles.app.domain.TripRecorder
 import java.io.File
 
@@ -40,6 +41,7 @@ object AutoDetect {
     private const val KEY_PARK_LAT = "park_lat"
     private const val KEY_PARK_LNG = "park_lng"
     private const val KEY_PARK_TIME = "park_time"
+    private const val KEY_PAUSED_UNTIL = "paused_until"
     private const val FENCE_ID = "parked"
     private const val FENCE_RADIUS_M = 150f
 
@@ -49,6 +51,25 @@ object AutoDetect {
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun isEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_ON, false)
+
+    /** When a pause ends, in milliseconds. 0 means not paused; Long.MAX_VALUE means until resumed. */
+    fun pausedUntil(context: Context): Long = prefs(context).getLong(KEY_PAUSED_UNTIL, 0L)
+
+    fun isPaused(context: Context): Boolean = Pause.isPaused(System.currentTimeMillis(), pausedUntil(context))
+
+    /** Pausing keeps detection signed up but ignores its signals, so resuming is instant. */
+    fun pause(context: Context, untilMs: Long) {
+        prefs(context).edit().putLong(KEY_PAUSED_UNTIL, untilMs).apply()
+        DiagLog.add(
+            context,
+            if (untilMs == Pause.FOREVER) "Auto-detect paused until turned back on" else "Auto-detect paused"
+        )
+    }
+
+    fun resume(context: Context) {
+        prefs(context).edit().putLong(KEY_PAUSED_UNTIL, 0L).apply()
+        DiagLog.add(context, "Auto-detect resumed")
+    }
 
     private fun granted(context: Context, permission: String): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
@@ -207,6 +228,19 @@ object AutoDetect {
 class DetectionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (!AutoDetect.isEnabled(context)) return
+        if (AutoDetect.isPaused(context)) {
+            // Paused: a drive already recording can still end on its own, but nothing new starts.
+            if (intent.action == AutoDetect.ACTION_TRANSITION && TrackingState.isAutoActive()) {
+                val result = ActivityTransitionResult.extractResult(intent)
+                val exited = result?.transitionEvents?.any {
+                    it.activityType == DetectedActivity.IN_VEHICLE &&
+                        it.transitionType == ActivityTransition.ACTIVITY_TRANSITION_EXIT
+                } == true
+                if (exited) TrackingService.autoStop(context)
+            }
+            DiagLog.add(context, "Signal ignored: auto-detect is paused")
+            return
+        }
         when (intent.action) {
             AutoDetect.ACTION_TRANSITION -> {
                 if (!ActivityTransitionResult.hasResult(intent)) return

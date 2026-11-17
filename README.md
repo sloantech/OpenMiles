@@ -13,6 +13,7 @@ so compare your first weeks of drives against another tracker or your odometer.
 ## What it does now
 
 - Start and stop a drive yourself, or turn on **automatic drive detection** (optional, off by default).
+  You can pause it for an hour, a day, a week, or until you turn it back on.
 - Records the route with GPS and adds up the miles. A drive in progress is saved every 30 seconds.
 - Swipe a drive right for Business or left for Personal.
 - Tap a drive to pick any category (Business, Personal, Medical, Charity, or your own) and add notes.
@@ -34,7 +35,6 @@ so compare your first weeks of drives against another tracker or your odometer.
 ## What comes next
 
 - Import drives from MileIQ (waiting on a sample export file)
-- Pause detection for a set time
 - PDF reports and a map view
 
 ## How to install it on your phone

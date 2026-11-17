@@ -112,6 +112,7 @@ import org.openmiles.app.domain.Calc
 import org.openmiles.app.domain.Csv
 import org.openmiles.app.domain.DateRange
 import org.openmiles.app.domain.ImportedDrive
+import org.openmiles.app.domain.Pause
 import org.openmiles.app.domain.TimelineImport
 import org.openmiles.app.domain.TripEdit
 import org.openmiles.app.domain.UpdateReminder
@@ -172,10 +173,14 @@ private fun HighwayHeader() {
     val extra = LocalExtraColors.current
     val context = LocalContext.current
     var autoOn by remember { mutableStateOf(AutoDetect.isEnabled(context)) }
+    var paused by remember { mutableStateOf(AutoDetect.isPaused(context)) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) autoOn = AutoDetect.isEnabled(context)
+            if (event == Lifecycle.Event.ON_RESUME) {
+                autoOn = AutoDetect.isEnabled(context)
+                paused = AutoDetect.isPaused(context)
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -204,7 +209,7 @@ private fun HighwayHeader() {
             }
             if (autoOn) {
                 Text(
-                    "Auto-detect on",
+                    if (paused) "Auto-detect paused" else "Auto-detect on",
                     color = extra.headerSubtext,
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier
@@ -1549,10 +1554,13 @@ private fun AutoDetectSection() {
     var explainBackground by remember { mutableStateOf(false) }
     var justTurnedOff by remember { mutableStateOf(false) }
     var triedToTurnOn by remember { mutableStateOf(false) }
+    var pausedUntil by remember { mutableLongStateOf(AutoDetect.pausedUntil(context)) }
+    var choosingPause by remember { mutableStateOf(false) }
 
     fun refresh() {
         missing = AutoDetect.missingPermissions(context)
         enabled = AutoDetect.isEnabled(context)
+        pausedUntil = AutoDetect.pausedUntil(context)
     }
 
     // Permissions can change in the phone's Settings while the app is in the background.
@@ -1666,6 +1674,46 @@ private fun AutoDetectSection() {
             "Off. Turn this on to record drives without tapping Start. It needs location " +
                 "\"Allow all the time\" and Physical activity. Nothing leaves your phone.",
             style = MaterialTheme.typography.bodySmall
+        )
+    }
+    if (enabled && missing.isEmpty()) {
+        val nowMs = System.currentTimeMillis()
+        if (Pause.isPaused(nowMs, pausedUntil)) {
+            Text(
+                if (pausedUntil == Pause.FOREVER) "Paused until you turn it back on."
+                else "Paused until ${Calc.fmtDate(pausedUntil)}, ${Calc.fmtTime(pausedUntil)}.",
+                fontWeight = FontWeight.SemiBold
+            )
+            Button(onClick = {
+                AutoDetect.resume(context)
+                pausedUntil = 0L
+            }) { Text("Resume now") }
+        } else {
+            OutlinedButton(onClick = { choosingPause = true }) { Text("Pause automatic detection") }
+        }
+    }
+    if (choosingPause) {
+        AlertDialog(
+            onDismissRequest = { choosingPause = false },
+            title = { Text("Pause automatic detection") },
+            text = {
+                Column {
+                    Text(
+                        "No new drives start on their own while paused. Start drive still works.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Pause.Option.values().forEach { option ->
+                        TextButton(onClick = {
+                            val until = Pause.until(option, System.currentTimeMillis())
+                            AutoDetect.pause(context, until)
+                            pausedUntil = until
+                            choosingPause = false
+                        }) { Text(option.label) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { choosingPause = false }) { Text("Cancel") } }
         )
     }
     if (enabled) {

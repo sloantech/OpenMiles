@@ -3,6 +3,15 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.9.0] - 2026-11-17
+
+### Added
+- Pause automatic detection for 1 hour, the rest of today, 24 hours, 1 week, or until you turn
+  it back on (Settings, Automatic drive detection). Start drive still works while paused, and
+  a drive already recording still ends normally.
+- The header shows "Auto-detect paused" while paused, and the detection log records pauses
+  and any signals ignored because of one.
+
 ## [0.8.0] - 2026-11-17
 
 ### Added
