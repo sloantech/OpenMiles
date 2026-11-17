@@ -12,6 +12,7 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -26,18 +27,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -51,6 +52,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -74,11 +76,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
@@ -118,23 +122,32 @@ import org.openmiles.app.tracking.TrackingService
 fun OpenMilesApp(vm: AppViewModel) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val tabs = listOf(
-        "Drives" to Icons.Default.Home,
-        "Reports" to Icons.Default.DateRange,
-        "Settings" to Icons.Default.Settings
+        "Drives" to HighwayIcons.Car,
+        "Reports" to HighwayIcons.Chart,
+        "Settings" to HighwayIcons.Gear
     )
     Scaffold(
+        topBar = { HighwayHeader() },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 tabs.forEachIndexed { index, (label, icon) ->
                     NavigationBarItem(
                         selected = tab == index,
                         onClick = { tab = index },
-                        icon = { Icon(icon, contentDescription = label) },
-                        label = { Text(label) }
+                        icon = { Icon(icon, contentDescription = null) },
+                        label = { Text(label) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     )
                 }
             }
-        }
+        },
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
@@ -146,9 +159,56 @@ fun OpenMilesApp(vm: AppViewModel) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Drives tab: record, swipe to classify, tap to edit
-// ---------------------------------------------------------------------------
+/** The navy bar at the top, with the app name and whether auto-detect is on. */
+@Composable
+private fun HighwayHeader() {
+    val extra = LocalExtraColors.current
+    val context = LocalContext.current
+    var autoOn by remember { mutableStateOf(AutoDetect.isEnabled(context)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) autoOn = AutoDetect.isEnabled(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    Box(Modifier.fillMaxWidth().background(extra.header)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    Modifier.size(34.dp).clip(RoundedCornerShape(10.dp)).background(Highway.Amber),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(HighwayIcons.Road, contentDescription = null, tint = Highway.OnAmber, modifier = Modifier.size(22.dp))
+                }
+                Text(
+                    "OpenMiles",
+                    color = extra.onHeader,
+                    style = MaterialTheme.typography.titleLarge
+                )
+            }
+            if (autoOn) {
+                Text(
+                    "Auto-detect on",
+                    color = extra.headerSubtext,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(Color.White.copy(alpha = 0.12f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun DrivesScreen(vm: AppViewModel) {
@@ -183,59 +243,117 @@ fun DrivesScreen(vm: AppViewModel) {
     var snoozedUntil by remember { mutableLongStateOf(reminderPrefs.getLong("until", 0L)) }
     val now = System.currentTimeMillis()
 
-    Column(Modifier.fillMaxSize()) {
+    val today = LocalDate.now()
+    val grouped = remember(trips) {
+        trips.groupBy { Calc.toDate(it.startTime) }.toList().sortedByDescending { it.first }
+    }
+    val byCategory = remember(categories) { categories.associateBy { it.id } }
+    val monthTrips = remember(trips) {
+        trips.filter { Calc.toDate(it.startTime) in DateRange.month(today) }
+    }
+    val monthBusiness = remember(monthTrips, byCategory, rates) {
+        monthTrips.sumOf { t ->
+            val c = t.categoryId?.let { byCategory[it] }
+            if (c?.kind == Kind.BUSINESS) Calc.valueOf(t, c, rates) else 0.0
+        }
+    }
+    val toClassify = remember(trips, byCategory) {
+        trips.count { it.categoryId == null || byCategory[it.categoryId] == null }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         if (UpdateReminder.shouldShow(now, BuildConfig.BUILD_TIME_MS, snoozedUntil)) {
-            UpdateBanner(
-                monthsOld = UpdateReminder.monthsOld(now, BuildConfig.BUILD_TIME_MS),
-                onCheck = {
-                    openLink(context, AppConfig.RELEASES_URL)
-                    snoozedUntil = now + UpdateReminder.AFTER_CHECK_DAYS * UpdateReminder.DAY_MS
-                    reminderPrefs.edit().putLong("until", snoozedUntil).apply()
-                },
-                onLater = {
-                    snoozedUntil = now + UpdateReminder.SNOOZE_DAYS * UpdateReminder.DAY_MS
-                    reminderPrefs.edit().putLong("until", snoozedUntil).apply()
-                }
+            item(key = "update") {
+                UpdateBanner(
+                    monthsOld = UpdateReminder.monthsOld(now, BuildConfig.BUILD_TIME_MS),
+                    onCheck = {
+                        openLink(context, AppConfig.RELEASES_URL)
+                        snoozedUntil = now + UpdateReminder.AFTER_CHECK_DAYS * UpdateReminder.DAY_MS
+                        reminderPrefs.edit().putLong("until", snoozedUntil).apply()
+                    },
+                    onLater = {
+                        snoozedUntil = now + UpdateReminder.SNOOZE_DAYS * UpdateReminder.DAY_MS
+                        reminderPrefs.edit().putLong("until", snoozedUntil).apply()
+                    }
+                )
+            }
+        }
+        item(key = "summary") {
+            MonthSummary(
+                monthName = today.month.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.US),
+                meters = monthTrips.sumOf { it.distanceMeters },
+                drives = monthTrips.size,
+                businessValue = monthBusiness,
+                toClassify = toClassify
             )
         }
-        RecordCard(
-            live = live,
-            permissionProblem = permissionProblem,
-            onStart = {
-                val perms = mutableListOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-                if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                permissionLauncher.launch(perms.toTypedArray())
-            },
-            onStop = { TrackingService.stop(context) }
-        )
-        TextButton(
-            onClick = { addingDrive = true },
-            modifier = Modifier.padding(horizontal = 8.dp)
-        ) { Text("+ Add a drive by hand") }
+        item(key = "record") {
+            RecordCard(
+                live = live,
+                permissionProblem = permissionProblem,
+                onStart = {
+                    val perms = mutableListOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                    if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
+                    permissionLauncher.launch(perms.toTypedArray())
+                },
+                onStop = { TrackingService.stop(context) }
+            )
+        }
+        item(key = "add") {
+            TextButton(onClick = { addingDrive = true }) {
+                Icon(HighwayIcons.Plus, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Add a drive by hand", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
 
         if (trips.isEmpty()) {
-            Text(
-                "No drives yet. Tap Start drive before you leave, then Stop when you arrive.",
-                modifier = Modifier.padding(24.dp),
-                style = MaterialTheme.typography.bodyLarge
-            )
+            item(key = "empty") {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("No drives yet", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Tap Start drive before you leave and Stop when you arrive. Or turn on " +
+                                "automatic detection in Settings.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         } else {
-            Text(
-                "Swipe right for Business. Swipe left for Personal. Tap a drive for more choices.",
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.bodySmall
-            )
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(trips, key = { it.id }) { trip ->
+            item(key = "hint") {
+                Text(
+                    "Swipe right for Business, left for Personal. Tap a drive for more.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            grouped.forEach { (day, dayTrips) ->
+                item(key = "d$day") {
+                    Text(
+                        dayLabel(day, today).uppercase(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                }
+                items(dayTrips, key = { it.id }) { trip ->
                     TripRow(
                         trip = trip,
-                        category = categories.find { it.id == trip.categoryId },
+                        category = trip.categoryId?.let { byCategory[it] },
                         rates = rates,
                         onSwipeBusiness = { vm.quickClassify(trip.id, Kind.BUSINESS) },
                         onSwipePersonal = { vm.quickClassify(trip.id, Kind.PERSONAL) },
@@ -273,6 +391,81 @@ fun DrivesScreen(vm: AppViewModel) {
     }
 }
 
+private fun dayLabel(day: LocalDate, today: LocalDate): String = when (day) {
+    today -> "Today"
+    today.minusDays(1) -> "Yesterday"
+    else -> day.format(java.time.format.DateTimeFormatter.ofPattern("EEE, MMM d, yyyy", java.util.Locale.US))
+}
+
+/** The navy card at the top: this month's miles, business value, and drives left to classify. */
+@Composable
+private fun MonthSummary(monthName: String, meters: Double, drives: Int, businessValue: Double, toClassify: Int) {
+    val extra = LocalExtraColors.current
+    Card(
+        colors = CardDefaults.cardColors(containerColor = extra.header, contentColor = extra.onHeader),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                monthName.uppercase(),
+                style = MaterialTheme.typography.labelMedium,
+                color = extra.headerSubtext,
+                letterSpacing = 1.sp
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                Column {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            String.format(java.util.Locale.US, "%,.1f", Calc.miles(meters)),
+                            style = BigNumber.copy(fontSize = 40.sp, letterSpacing = (-1).sp),
+                            color = extra.onHeader
+                        )
+                        Text(
+                            " mi",
+                            style = BigNumber.copy(fontSize = 16.sp),
+                            color = extra.onHeader,
+                            modifier = Modifier.padding(bottom = 6.dp)
+                        )
+                    }
+                    Text(
+                        if (drives == 1) "1 drive" else "$drives drives",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = extra.headerSubtext
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(Calc.fmtMoney(businessValue), style = BigNumber.copy(fontSize = 26.sp), color = extra.onHeader)
+                    Text("business value", style = MaterialTheme.typography.bodySmall, color = extra.headerSubtext)
+                }
+            }
+            if (toClassify > 0) {
+                Pill(
+                    if (toClassify == 1) "1 drive to classify" else "$toClassify drives to classify",
+                    extra.todo,
+                    extra.todoBg
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Pill(text: String, color: Color, background: Color) {
+    Text(
+        text,
+        color = color,
+        style = MaterialTheme.typography.labelMedium,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(background)
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+    )
+}
+
 @Composable
 private fun RecordCard(
     live: LiveTrip,
@@ -280,40 +473,71 @@ private fun RecordCard(
     onStart: () -> Unit,
     onStop: () -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            if (live.active) {
-                Text(
-                    if (live.auto) "Drive detected. Recording." else "Recording your drive",
-                    style = MaterialTheme.typography.titleMedium
+    val extra = LocalExtraColors.current
+    if (live.active) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = extra.header, contentColor = extra.onHeader),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Pill(
+                    if (live.auto) "Drive detected" else "Recording",
+                    Highway.OnAmber,
+                    Highway.Amber
                 )
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        String.format(java.util.Locale.US, "%.1f", Calc.miles(live.meters)),
+                        style = BigNumber.copy(fontSize = 44.sp),
+                        color = extra.onHeader
+                    )
+                    Text(
+                        " mi",
+                        style = BigNumber.copy(fontSize = 18.sp),
+                        color = extra.onHeader,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
                 Text(
-                    Calc.fmtMiles(live.meters),
-                    style = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.Bold
+                    "Started at ${Calc.fmtTime(live.startTime)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = extra.headerSubtext
                 )
-                Text("Started at ${Calc.fmtTime(live.startTime)}")
                 if (live.gpsWeak) {
                     Text(
-                        "No GPS signal right now. Recording continues. The gap is counted in a " +
+                        "No GPS signal right now. Recording continues, and the gap is counted in a " +
                             "straight line when the signal returns.",
-                        color = MaterialTheme.colorScheme.error,
+                        color = Highway.Amber,
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
-                Spacer(Modifier.height(12.dp))
-                Button(onClick = onStop, modifier = Modifier.fillMaxWidth()) { Text("Stop drive") }
-            } else {
-                Text("Ready when you are", style = MaterialTheme.typography.titleMedium)
-                if (permissionProblem != null) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(permissionProblem, color = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.height(6.dp))
+                Button(
+                    onClick = onStop,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Highway.Navy)
+                ) {
+                    Icon(HighwayIcons.Stop, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Stop drive", style = MaterialTheme.typography.titleMedium)
                 }
-                Spacer(Modifier.height(12.dp))
-                Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) { Text("Start drive") }
+            }
+        }
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = onStart,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Highway.Amber, contentColor = Highway.OnAmber)
+            ) {
+                Icon(HighwayIcons.Play, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Start drive", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+            }
+            if (permissionProblem != null) {
+                Text(permissionProblem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -328,6 +552,7 @@ private fun TripRow(
     onSwipePersonal: () -> Unit,
     onClick: () -> Unit
 ) {
+    val extra = LocalExtraColors.current
     val state = rememberSwipeToDismissBoxState(
         confirmValueChange = { target ->
             when (target) {
@@ -339,67 +564,84 @@ private fun TripRow(
             false
         }
     )
+    val shape = RoundedCornerShape(16.dp)
     SwipeToDismissBox(
         state = state,
+        modifier = Modifier.clip(shape),
         backgroundContent = {
-            val direction = state.dismissDirection
-            val (color, label, alignment) = when (direction) {
-                SwipeToDismissBoxValue.StartToEnd ->
-                    Triple(Color(0xFF2E7D32), "Business", Alignment.CenterStart)
-                SwipeToDismissBoxValue.EndToStart ->
-                    Triple(Color(0xFF546E7A), "Personal", Alignment.CenterEnd)
+            val (color, label, alignment) = when (state.dismissDirection) {
+                SwipeToDismissBoxValue.StartToEnd -> Triple(extra.swipeBusiness, "Business", Alignment.CenterStart)
+                SwipeToDismissBoxValue.EndToStart -> Triple(extra.swipePersonal, "Personal", Alignment.CenterEnd)
                 else -> Triple(Color.Transparent, "", Alignment.Center)
             }
             Box(
-                Modifier.fillMaxSize().background(color).padding(horizontal = 20.dp),
+                Modifier.fillMaxSize().background(color).padding(horizontal = 22.dp),
                 contentAlignment = alignment
             ) {
-                Text(label, color = Color.White, fontWeight = FontWeight.Bold)
+                Text(label, color = Color.White, style = MaterialTheme.typography.titleMedium)
             }
         }
     ) {
         Card(
             modifier = Modifier.fillMaxWidth().clickable { onClick() },
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            shape = shape,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
         ) {
             Row(
-                Modifier.padding(16.dp).fillMaxWidth(),
+                Modifier.padding(horizontal = 16.dp, vertical = 14.dp).fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(Calc.fmtDate(trip.startTime), fontWeight = FontWeight.Bold)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
                         "${Calc.fmtTime(trip.startTime)} to ${Calc.fmtTime(trip.endTime)}",
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(
-                        category?.name ?: "Not classified yet",
-                        color = if (category == null) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        },
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    if (trip.notes.isNotBlank()) {
-                        Text(trip.notes, style = MaterialTheme.typography.bodySmall)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        when {
+                            category == null -> Pill("Swipe to classify", extra.todo, extra.todoBg)
+                            category.kind == Kind.BUSINESS -> Pill(category.name, extra.business, extra.businessBg)
+                            category.kind == Kind.PERSONAL -> Pill(category.name, extra.personal, extra.personalBg)
+                            else -> Pill(category.name, extra.other, extra.otherBg)
+                        }
+                        if (trip.source != Source.GPS) {
+                            Text(
+                                Source.label(trip.source),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
-                    if (trip.source != Source.GPS) {
+                    if (trip.notes.isNotBlank()) {
                         Text(
-                            Source.label(trip.source),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            trip.notes,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2
                         )
                     }
                 }
                 Column(horizontalAlignment = Alignment.End) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            String.format(java.util.Locale.US, "%.1f", Calc.miles(trip.distanceMeters)),
+                            style = BigNumber,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            " mi",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                    }
                     Text(
-                        Calc.fmtMiles(trip.distanceMeters),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        if (category == null) "Not classified" else Calc.fmtMoney(Calc.valueOf(trip, category, rates)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(Calc.fmtMoney(Calc.valueOf(trip, category, rates)))
                 }
             }
         }
@@ -661,6 +903,10 @@ fun SettingsScreen(vm: AppViewModel) {
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         item {
+            AppearanceSection()
+            Spacer(Modifier.height(16.dp))
+        }
+        item {
             AutoDetectSection()
             Spacer(Modifier.height(8.dp))
             DetectionLogSection()
@@ -749,6 +995,26 @@ fun SettingsScreen(vm: AppViewModel) {
             onAdd = { kind, date, dollars -> vm.addRate(kind, date, dollars) },
             onClose = { showAddRate = false }
         )
+    }
+}
+
+@Composable
+private fun AppearanceSection() {
+    val context = LocalContext.current
+    val mode by Appearance.mode.collectAsStateWithLifecycle()
+    Text("Appearance", style = MaterialTheme.typography.titleLarge)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf(
+            Appearance.SYSTEM to "Match phone",
+            Appearance.LIGHT to "Light",
+            Appearance.DARK to "Dark"
+        ).forEach { (value, label) ->
+            FilterChip(
+                selected = mode == value,
+                onClick = { Appearance.set(context, value) },
+                label = { Text(label) }
+            )
+        }
     }
 }
 

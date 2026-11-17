@@ -3,6 +3,19 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.5.0] - 2026-11-17
+
+### Changed
+- New "Highway" look: navy and amber colors, the Inter and Space Grotesk fonts, and a new app icon.
+- The Drives tab now opens with a summary of this month (miles, drives, business value, and
+  how many drives still need a category), a larger Start drive button, and drives grouped by day.
+- Drive cards show big mileage numbers and a colored tag for each category.
+- A live recording card shows the miles counting up in large type.
+
+### Added
+- Dark mode. It follows your phone's setting, or pick Light or Dark in Settings, under Appearance.
+- Themed icon support on Android 13 and newer.
+
 ## [0.4.0] - 2026-11-17
 
 ### Added

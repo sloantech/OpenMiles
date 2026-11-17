@@ -73,6 +73,11 @@ about two months old, the app shows a small note with a button that opens this d
 - Drives shorter than about 50 meters are thrown away on purpose.
 - The debug build is for testing. A signed release build comes later.
 
+## Fonts
+
+OpenMiles bundles the Inter and Space Grotesk fonts (SIL Open Font License 1.1). See
+`third_party/fonts/` for details and license texts.
+
 ## License
 
 OpenMiles is free software under the **GNU General Public License v3.0** (see `LICENSE`).

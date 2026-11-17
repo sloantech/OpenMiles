@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Highway look: an amber road with navy center dashes, on navy. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- A simple road with a center dash -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M40,24 L68,24 L82,84 L26,84 Z" />
+        android:fillColor="#F2A900"
+        android:pathData="M45,30 L63,30 L76,78 L32,78 Z" />
     <path
-        android:fillColor="#1B5E9E"
-        android:pathData="M52,30 L56,30 L56,40 L52,40 Z" />
+        android:fillColor="#0F2A44"
+        android:pathData="M52.5,35 L55.5,35 L55.5,43 L52.5,43 Z" />
     <path
-        android:fillColor="#1B5E9E"
-        android:pathData="M52,48 L56,48 L56,60 L52,60 Z" />
+        android:fillColor="#0F2A44"
+        android:pathData="M52.2,49 L55.8,49 L55.8,58 L52.2,58 Z" />
     <path
-        android:fillColor="#1B5E9E"
-        android:pathData="M51,68 L57,68 L58,80 L50,80 Z" />
+        android:fillColor="#0F2A44"
+        android:pathData="M51.8,64 L56.2,64 L56.6,74 L51.4,74 Z" />
 </vector>
