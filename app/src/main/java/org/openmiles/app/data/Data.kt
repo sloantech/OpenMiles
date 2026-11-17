@@ -113,6 +113,24 @@ interface TripDao {
     @Query("SELECT startTime, endTime FROM trips")
     suspend fun allSpans(): List<TimeSpan>
 
+    /** Full drives a page at a time, oldest first, so a backup never loads every route at once. */
+    @Query("SELECT * FROM trips ORDER BY id LIMIT :limit OFFSET :offset")
+    suspend fun page(limit: Int, offset: Int): List<Trip>
+
+    @Query("SELECT COUNT(*) FROM trips")
+    suspend fun count(): Int
+
+    // Plain (non-suspend) versions for backup and restore, which run on a background thread
+    // inside one database transaction. Never call these from the main thread.
+    @Query("SELECT * FROM trips ORDER BY id LIMIT :limit OFFSET :offset")
+    fun pageNow(limit: Int, offset: Int): List<Trip>
+
+    @Query("SELECT startTime, endTime FROM trips")
+    fun allSpansNow(): List<TimeSpan>
+
+    @Insert
+    fun insertAllNow(trips: List<Trip>)
+
     @Query("SELECT COUNT(*) FROM trips WHERE startTime = :start")
     suspend fun countStartingAt(start: Long): Int
 
@@ -137,6 +155,15 @@ interface CategoryDao {
     @Query("SELECT COUNT(*) FROM categories")
     suspend fun count(): Int
 
+    @Query("SELECT * FROM categories")
+    suspend fun all(): List<Category>
+
+    @Query("SELECT * FROM categories")
+    fun allNow(): List<Category>
+
+    @Insert
+    fun insertNow(category: Category): Long
+
     @Query("SELECT * FROM categories WHERE builtIn = 1 AND kind = :kind LIMIT 1")
     suspend fun builtIn(kind: String): Category?
 
@@ -154,6 +181,15 @@ interface RateDao {
 
     @Query("SELECT COUNT(*) FROM rates")
     suspend fun count(): Int
+
+    @Query("SELECT * FROM rates")
+    suspend fun all(): List<Rate>
+
+    @Query("SELECT * FROM rates")
+    fun allNow(): List<Rate>
+
+    @Insert
+    fun insertAllNow(rates: List<Rate>)
 
     @Insert
     suspend fun insert(rate: Rate): Long

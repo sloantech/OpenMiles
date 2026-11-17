@@ -81,4 +81,33 @@ class DatabaseUpgradeTest {
             db.close()
         }
     }
+
+    @Test
+    fun backupPagingAndTransactionInsertWork() {
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        try {
+            db.runInTransaction {
+                db.tripDao().insertAllNow((1..450).map { Trip(startTime = it.toLong(), endTime = it + 1L, distanceMeters = 1.0) })
+            }
+            val seen = mutableListOf<Long>()
+            var offset = 0
+            while (true) {
+                val page = db.tripDao().pageNow(200, offset)
+                if (page.isEmpty()) break
+                seen += page.map { it.startTime }
+                offset += page.size
+            }
+            assertEquals((1L..450L).toList(), seen)
+            // A failure inside the transaction leaves nothing behind.
+            runCatching {
+                db.runInTransaction {
+                    db.tripDao().insertAllNow(listOf(Trip(startTime = 999, endTime = 1000, distanceMeters = 1.0)))
+                    throw IllegalStateException("boom")
+                }
+            }
+            assertEquals(450, db.tripDao().allSpansNow().size)
+        } finally {
+            db.close()
+        }
+    }
 }

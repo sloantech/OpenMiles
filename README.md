@@ -22,6 +22,9 @@ so compare your first weeks of drives against another tracker or your odometer.
   and a CSV spreadsheet export.
 - Add a drive by hand when the app was off, or import past drives from Google Maps Timeline.
   Every drive shows where it came from, in the app and in exports.
+- Backup and restore: save one backup file wherever you like, and restore it on a new phone.
+  Restoring only adds what is missing and never deletes anything.
+- Light and dark looks that follow your phone, or pick one in Settings.
 - A private detection log in Settings shows why each drive started, ended, or was not kept.
 - The version number is shown in Settings, under About.
 
@@ -29,7 +32,7 @@ so compare your first weeks of drives against another tracker or your odometer.
 
 - Import drives from MileIQ (waiting on a sample export file)
 - Frequent places, round-trip grouping, auto-classify rules, work hours
-- PDF reports, map view, backup and restore
+- PDF reports and a map view
 
 ## How to install it on your phone
 

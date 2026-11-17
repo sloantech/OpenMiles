@@ -67,6 +67,7 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -102,6 +103,7 @@ import org.openmiles.app.data.Kind
 import org.openmiles.app.data.Rate
 import org.openmiles.app.data.Source
 import org.openmiles.app.data.TripSummary
+import org.openmiles.app.domain.BackupReminder
 import org.openmiles.app.domain.Calc
 import org.openmiles.app.domain.Csv
 import org.openmiles.app.domain.DateRange
@@ -241,6 +243,21 @@ fun DrivesScreen(vm: AppViewModel) {
     var addingDrive by remember { mutableStateOf(false) }
     val reminderPrefs = remember { context.getSharedPreferences("update_reminder", Context.MODE_PRIVATE) }
     var snoozedUntil by remember { mutableLongStateOf(reminderPrefs.getLong("until", 0L)) }
+    var backupSnoozed by remember { mutableLongStateOf(reminderPrefs.getLong("backup_until", 0L)) }
+    val lastBackup by vm.lastBackup.collectAsStateWithLifecycle()
+    // A backup started from the Drives tab reports back here too.
+    val backupState by vm.backupState.collectAsStateWithLifecycle()
+    LaunchedEffect(backupState) {
+        when (val st = backupState) {
+            is AppViewModel.BackupState.Saved ->
+                Toast.makeText(context, "Backup saved and checked: ${st.drives} drives.", Toast.LENGTH_LONG).show()
+            is AppViewModel.BackupState.Failed -> Toast.makeText(context, st.message, Toast.LENGTH_LONG).show()
+            else -> Unit
+        }
+    }
+    val backupSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) vm.saveBackup(uri)
+    }
     val now = System.currentTimeMillis()
 
     val today = LocalDate.now()
@@ -280,6 +297,32 @@ fun DrivesScreen(vm: AppViewModel) {
                         reminderPrefs.edit().putLong("until", snoozedUntil).apply()
                     }
                 )
+            }
+        }
+        if (BackupReminder.shouldShow(now, lastBackup, trips.size, backupSnoozed)) {
+            item(key = "backup") {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                ) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+                        Text("Time for a backup", fontWeight = FontWeight.Bold)
+                        Text(
+                            if (lastBackup > 0) "Your last backup was ${Calc.fmtDate(lastBackup)}." else
+                                "Your drives are only on this phone. A backup keeps them safe.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(onClick = {
+                                backupSaver.launch("openmiles-backup-${LocalDate.now()}.json")
+                            }) { Text("Back up now") }
+                            TextButton(onClick = {
+                                backupSnoozed = now + BackupReminder.SNOOZE_DAYS * BackupReminder.DAY_MS
+                                reminderPrefs.edit().putLong("backup_until", backupSnoozed).apply()
+                            }) { Text("Not now") }
+                        }
+                    }
+                }
             }
         }
         item(key = "summary") {
@@ -907,6 +950,10 @@ fun SettingsScreen(vm: AppViewModel) {
             Spacer(Modifier.height(16.dp))
         }
         item {
+            BackupSection(vm)
+            Spacer(Modifier.height(16.dp))
+        }
+        item {
             AutoDetectSection()
             Spacer(Modifier.height(8.dp))
             DetectionLogSection()
@@ -995,6 +1042,88 @@ fun SettingsScreen(vm: AppViewModel) {
             onAdd = { kind, date, dollars -> vm.addRate(kind, date, dollars) },
             onClose = { showAddRate = false }
         )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Backup and restore
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun BackupSection(vm: AppViewModel) {
+    val state by vm.backupState.collectAsStateWithLifecycle()
+    val last by vm.lastBackup.collectAsStateWithLifecycle()
+    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) vm.saveBackup(uri)
+    }
+    val opener = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.readBackup(uri)
+    }
+    val busy = state is AppViewModel.BackupState.Working
+
+    Text("Backup", style = MaterialTheme.typography.titleLarge)
+    Text(
+        "Your drives are stored only on this phone. Save a backup file to Google Drive, email, or " +
+            "your computer, so a lost or broken phone does not cost you your mileage log.",
+        style = MaterialTheme.typography.bodySmall
+    )
+    Text(
+        if (last > 0) "Last backup: ${Calc.fmtDate(last)}" else "Last backup: never",
+        style = MaterialTheme.typography.bodyMedium,
+        fontWeight = FontWeight.SemiBold
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(
+            onClick = { saver.launch("openmiles-backup-${LocalDate.now()}.json") },
+            enabled = !busy
+        ) { Text("Back up now") }
+        OutlinedButton(
+            onClick = { opener.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
+            enabled = !busy
+        ) { Text("Restore") }
+    }
+    when (val st = state) {
+        AppViewModel.BackupState.Working -> BusyLine("Working on it. A large log can take a minute.")
+        is AppViewModel.BackupState.Saved -> Text(
+            "Backup saved and checked: ${st.drives} drives.",
+            color = MaterialTheme.colorScheme.primary
+        )
+        is AppViewModel.BackupState.Restored -> Text(
+            "Restore finished. Added ${st.drives} drives, ${st.categories} categories and ${st.rates} rates.",
+            color = MaterialTheme.colorScheme.primary
+        )
+        is AppViewModel.BackupState.Failed -> Text(st.message, color = MaterialTheme.colorScheme.error)
+        is AppViewModel.BackupState.RestoreReady -> AlertDialog(
+            onDismissRequest = { vm.clearBackupState() },
+            title = { Text("Restore this backup?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "Made ${if (st.info.createdAt > 0) Calc.fmtDate(st.info.createdAt) else "on an unknown date"}" +
+                            if (st.info.appVersion.isNotBlank()) " with OpenMiles ${st.info.appVersion}." else "."
+                    )
+                    Text("Drives to add: ${st.newDrives}", fontWeight = FontWeight.Bold)
+                    Text("Already on this phone (skipped): ${st.alreadyHere}", style = MaterialTheme.typography.bodySmall)
+                    if (st.newCategories > 0) Text("Categories to add: ${st.newCategories}", style = MaterialTheme.typography.bodySmall)
+                    if (st.newRates > 0) Text("Rates to add: ${st.newRates}", style = MaterialTheme.typography.bodySmall)
+                    if (st.info.rejected > 0) {
+                        Text("Damaged entries left out: ${st.info.rejected}", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(
+                        "Restoring only adds what is missing. Nothing on this phone is deleted or changed.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { vm.restoreBackup(st) },
+                    enabled = st.newDrives + st.newCategories + st.newRates > 0
+                ) { Text("Restore") }
+            },
+            dismissButton = { TextButton(onClick = { vm.clearBackupState() }) { Text("Cancel") } }
+        )
+        else -> Unit
     }
 }
 

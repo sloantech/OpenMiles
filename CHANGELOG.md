@@ -3,6 +3,15 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.6.0] - 2026-11-17
+
+### Added
+- Backup and restore (Settings, Backup). A backup is one file you save where you like, such as
+  Google Drive, email or your computer. Each backup is read back and checked right after saving.
+- Restoring only adds what is missing (drives, categories and rates). Nothing on the phone is
+  deleted or changed, and a restore either finishes completely or changes nothing.
+- A gentle reminder on the Drives tab when you have not made a backup in 30 days.
+
 ## [0.5.0] - 2026-11-17
 
 ### Changed
