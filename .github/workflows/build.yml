@@ -102,12 +102,17 @@ jobs:
           name: OpenMiles-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Check the changelog has this version
+      - name: Check the changelog and landing page match this version
         run: |
           V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
           echo "App version: $V"
           if ! grep -q "^## \[$V\]" CHANGELOG.md; then
             echo "FAIL: CHANGELOG.md has no section for version $V. Add one before releasing."
+            exit 1
+          fi
+          # The landing page must describe the same version, so it is updated with every release.
+          if ! grep -q "data-app-version>Version $V<" docs/index.html; then
+            echo "FAIL: docs/index.html still describes an older version. Update the landing page for $V."
             exit 1
           fi
 

@@ -13,8 +13,8 @@ android {
         applicationId = "org.openmiles.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.11.0"
+        versionCode = 12
+        versionName = "0.11.1"
         // When this copy was built. The app uses it to suggest checking for a newer version
         // without ever going online.
         buildConfigField("long", "BUILD_TIME_MS", "${System.currentTimeMillis()}L")

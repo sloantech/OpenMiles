@@ -3,6 +3,13 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.11.1] - 2026-11-17
+
+### Changed
+- The Donate button now opens PayPal directly instead of going through a redirect.
+- The project website is live at https://sloantech.github.io/OpenMiles/. Every build now checks
+  that the website describes the current version, so it is updated with each release.
+
 ## [0.11.0] - 2026-11-17
 
 ### Added
