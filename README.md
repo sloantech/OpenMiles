@@ -106,7 +106,7 @@ share its source code under the same license.
 
 **A request:** please don't sell this app. It was built so people don't have to pay a
 monthly fee for mileage tracking. If you find it useful, you can support the developer
-with a donation instead: [PayPal](https://www.paypal.com/paypalme/joshuasloan). (The license does allow selling, but it requires that buyers get
+with a donation instead: [paypal.me/joshuasloan](https://www.paypal.com/paypalme/joshuasloan). (The license does allow selling, but it requires that buyers get
 the full source code too.)
 
 Please also give your fork a different name, so people don't confuse it with this project.
