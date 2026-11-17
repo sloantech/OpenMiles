@@ -110,4 +110,45 @@ class DatabaseUpgradeTest {
             db.close()
         }
     }
+
+    @Test
+    fun version2DatabaseUpgradesWithoutLosingDrives() {
+        val name = "upgrade-test-v2.db"
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name).apply { parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { old ->
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `trips` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`startTime` INTEGER NOT NULL, `endTime` INTEGER NOT NULL, `distanceMeters` REAL NOT NULL, " +
+                    "`categoryId` INTEGER, `notes` TEXT NOT NULL, `route` TEXT NOT NULL, " +
+                    "`source` TEXT NOT NULL DEFAULT 'gps')"
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `categories` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`name` TEXT NOT NULL, `kind` TEXT NOT NULL, `builtIn` INTEGER NOT NULL)"
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `rates` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`kind` TEXT NOT NULL, `effectiveFrom` TEXT NOT NULL, `dollarsPerMile` REAL NOT NULL)"
+            )
+            old.execSQL(
+                "INSERT INTO trips (startTime, endTime, distanceMeters, categoryId, notes, route, source) " +
+                    "VALUES (1700000000000, 1700000600000, 5000.0, NULL, 'from v2', '', 'timeline')"
+            )
+            old.version = 2
+        }
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(*AppDatabase.ALL_MIGRATIONS)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val trips = runBlocking { db.tripDao().observeSummaries().first() }
+            assertEquals(1, trips.size)
+            assertEquals("from v2", trips[0].notes)
+            assertEquals(Source.TIMELINE, trips[0].source)
+            assertEquals(false, trips[0].edited)
+        } finally {
+            db.close()
+        }
+    }
 }

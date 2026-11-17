@@ -13,6 +13,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 /** The four tax purposes. Every category belongs to exactly one of these. */
@@ -52,6 +53,10 @@ object Source {
         TIMELINE -> "Google Timeline"
         else -> "GPS"
     }
+
+    /** The label used in exports, which also says when a drive was changed by hand. */
+    fun exportLabel(source: String, edited: Boolean): String =
+        if (edited && source != MANUAL) "${label(source)}, edited" else label(source)
 }
 
 @Entity(tableName = "trips")
@@ -66,7 +71,9 @@ data class Trip(
     /** Route as "lat,lng,time;lat,lng,time;..." */
     val route: String = "",
     /** One of the [Source] values. Added in database version 2. */
-    @ColumnInfo(defaultValue = Source.GPS) val source: String = Source.GPS
+    @ColumnInfo(defaultValue = Source.GPS) val source: String = Source.GPS,
+    /** True once the date, times or miles were changed by hand, or the drive was split or merged. */
+    @ColumnInfo(defaultValue = "0") val edited: Boolean = false
 )
 
 /** Just the times of a drive, for checking overlaps. */
@@ -83,7 +90,8 @@ data class TripSummary(
     val distanceMeters: Double,
     val categoryId: Long?,
     val notes: String,
-    val source: String = Source.GPS
+    val source: String = Source.GPS,
+    val edited: Boolean = false
 )
 
 /** A mileage rate that starts on a date. The newest one on or before the trip date wins. */
@@ -99,7 +107,7 @@ data class Rate(
 @Dao
 interface TripDao {
     @Query(
-        "SELECT id, startTime, endTime, distanceMeters, categoryId, notes, source " +
+        "SELECT id, startTime, endTime, distanceMeters, categoryId, notes, source, edited " +
             "FROM trips ORDER BY startTime DESC"
     )
     fun observeSummaries(): Flow<List<TripSummary>>
@@ -130,6 +138,12 @@ interface TripDao {
 
     @Insert
     fun insertAllNow(trips: List<Trip>)
+
+    @Query("SELECT * FROM trips WHERE id = :id")
+    suspend fun get(id: Long): Trip?
+
+    @Update
+    suspend fun update(trip: Trip)
 
     @Query("SELECT COUNT(*) FROM trips WHERE startTime = :start")
     suspend fun countStartingAt(start: Long): Int
@@ -207,7 +221,7 @@ interface RateDao {
 
 @Database(
     entities = [Trip::class, Category::class, Rate::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -239,7 +253,14 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2)
+        /** Version 2 to 3: mark drives changed by hand. Old drives were not edited. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `trips` ADD COLUMN `edited` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
     }
 }
 

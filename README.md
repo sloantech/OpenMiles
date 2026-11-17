@@ -20,6 +20,7 @@ so compare your first weeks of drives against another tracker or your odometer.
   You can add new rates in Settings.
 - Reports for any date range (this month, last quarter, a custom range) with totals by category
   and a CSV spreadsheet export.
+- Edit, split or merge drives. Changed drives are marked "edited" in reports.
 - Add a drive by hand when the app was off, or import past drives from Google Maps Timeline.
   Every drive shows where it came from, in the app and in exports.
 - Backup and restore: save one backup file wherever you like, and restore it on a new phone.

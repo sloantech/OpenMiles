@@ -3,6 +3,20 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.7.0] - 2026-11-17
+
+### Added
+- Edit a drive's date, times or miles (tap a drive, then Edit).
+- Split a drive in two at a time you pick. Miles are divided along the GPS route when there is
+  one, otherwise by time.
+- Merge a drive with the one after it, for when a stop split one trip in two.
+- Drives changed by hand are marked "edited" on the drive card and in the spreadsheet's Source
+  column, so your log stays honest.
+- A drive can now end after midnight when added or edited by hand.
+
+### Changed
+- The database records whether a drive was edited. Existing drives are kept unchanged.
+
 ## [0.6.0] - 2026-11-17
 
 ### Added

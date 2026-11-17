@@ -109,6 +109,7 @@ import org.openmiles.app.domain.Csv
 import org.openmiles.app.domain.DateRange
 import org.openmiles.app.domain.ImportedDrive
 import org.openmiles.app.domain.TimelineImport
+import org.openmiles.app.domain.TripEdit
 import org.openmiles.app.domain.UpdateReminder
 import org.openmiles.app.domain.Validation
 import org.openmiles.app.tracking.AutoDetect
@@ -241,6 +242,9 @@ fun DrivesScreen(vm: AppViewModel) {
     }
 
     var addingDrive by remember { mutableStateOf(false) }
+    var formFor by remember { mutableStateOf<Long?>(null) }
+    var splitFor by remember { mutableStateOf<Long?>(null) }
+    var mergeFor by remember { mutableStateOf<Pair<TripSummary, TripSummary>?>(null) }
     val reminderPrefs = remember { context.getSharedPreferences("update_reminder", Context.MODE_PRIVATE) }
     var snoozedUntil by remember { mutableLongStateOf(reminderPrefs.getLong("until", 0L)) }
     var backupSnoozed by remember { mutableLongStateOf(reminderPrefs.getLong("backup_until", 0L)) }
@@ -408,9 +412,13 @@ fun DrivesScreen(vm: AppViewModel) {
     }
 
     if (addingDrive) {
-        AddDriveDialog(
+        DriveFormDialog(
+            title = "Add a drive by hand",
+            intro = "For drives the app missed. It will be marked \"Added by hand\" in reports.",
+            confirmLabel = "Add drive",
             categories = categories,
-            onAdd = { start, end, miles, categoryId, notes ->
+            showExtras = true,
+            onSave = { start, end, miles, categoryId, notes, _, _, _ ->
                 vm.addManualTrip(start, end, miles, categoryId, notes)
                 addingDrive = false
             },
@@ -418,10 +426,85 @@ fun DrivesScreen(vm: AppViewModel) {
         )
     }
 
+    trips.find { it.id == formFor }?.let { t ->
+        val zone = ZoneId.systemDefault()
+        val s0 = Instant.ofEpochMilli(t.startTime).atZone(zone)
+        val e0 = Instant.ofEpochMilli(t.endTime).atZone(zone)
+        val day0 = s0.toLocalDate().toEpochDay()
+        val start0 = s0.hour * 60 + s0.minute
+        val end0 = e0.hour * 60 + e0.minute
+        val miles0 = String.format(java.util.Locale.US, "%.1f", Calc.miles(t.distanceMeters))
+        DriveFormDialog(
+            title = "Edit this drive",
+            intro = "Fix the date, times or miles. The drive will be marked as edited in reports.",
+            confirmLabel = "Save",
+            categories = categories,
+            showExtras = false,
+            initialDay = day0,
+            initialStartMin = start0,
+            initialEndMin = end0,
+            initialMiles = miles0,
+            onSave = { start, end, miles, _, _, day, startMin, endMin ->
+                // Keep the exact original seconds for anything the person did not change.
+                val sameDay = day == day0
+                val newStart = if (sameDay && startMin == start0) t.startTime else start
+                val newEnd = if (sameDay && endMin == end0 && startMin == start0) t.endTime else end
+                val newMiles = if (String.format(java.util.Locale.US, "%.1f", miles) == miles0) Calc.miles(t.distanceMeters) else miles
+                vm.editTrip(t.id, newStart, newEnd, newMiles)
+                formFor = null
+            },
+            onClose = { formFor = null }
+        )
+    }
+
+    trips.find { it.id == splitFor }?.let { t ->
+        SplitDialog(t, onSplit = {
+            vm.splitTrip(t.id, it)
+            splitFor = null
+        }, onClose = { splitFor = null })
+    }
+
+    mergeFor?.let { (first, second) ->
+        AlertDialog(
+            onDismissRequest = { mergeFor = null },
+            title = { Text("Merge these drives?") },
+            text = {
+                Text(
+                    "${Calc.fmtTime(first.startTime)} to ${Calc.fmtTime(first.endTime)} (${Calc.fmtMiles(first.distanceMeters)}) and " +
+                        "${Calc.fmtTime(second.startTime)} to ${Calc.fmtTime(second.endTime)} (${Calc.fmtMiles(second.distanceMeters)}) " +
+                        "become one drive of ${Calc.fmtMiles(first.distanceMeters + second.distanceMeters)}. " +
+                        "Use this when a stop split one trip in two."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    vm.mergeTrips(first.id, second.id)
+                    mergeFor = null
+                }) { Text("Merge") }
+            },
+            dismissButton = { TextButton(onClick = { mergeFor = null }) { Text("Cancel") } }
+        )
+    }
+
     val editing = trips.find { it.id == editingId }
     if (editing != null) {
+        // The drive right after this one, for merging.
+        val next = trips.filter { it.startTime > editing.startTime }.minByOrNull { it.startTime }
         TripDialog(
             trip = editing,
+            next = next,
+            onEdit = {
+                formFor = editing.id
+                editingId = null
+            },
+            onSplit = {
+                splitFor = editing.id
+                editingId = null
+            },
+            onMerge = {
+                if (next != null) mergeFor = editing to next
+                editingId = null
+            },
             categories = categories,
             onPick = { vm.setCategory(editing.id, it) },
             onSaveNotes = { vm.setNotes(editing.id, it) },
@@ -649,9 +732,9 @@ private fun TripRow(
                             category.kind == Kind.PERSONAL -> Pill(category.name, extra.personal, extra.personalBg)
                             else -> Pill(category.name, extra.other, extra.otherBg)
                         }
-                        if (trip.source != Source.GPS) {
+                        if (trip.source != Source.GPS || trip.edited) {
                             Text(
-                                Source.label(trip.source),
+                                Source.exportLabel(trip.source, trip.edited),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -694,6 +777,10 @@ private fun TripRow(
 @Composable
 private fun TripDialog(
     trip: TripSummary,
+    next: TripSummary?,
+    onEdit: () -> Unit,
+    onSplit: () -> Unit,
+    onMerge: () -> Unit,
     categories: List<Category>,
     onPick: (Long?) -> Unit,
     onSaveNotes: (String) -> Unit,
@@ -712,7 +799,7 @@ private fun TripDialog(
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(
-                    "${Calc.fmtTime(trip.startTime)} to ${Calc.fmtTime(trip.endTime)}. Source: ${Source.label(trip.source)}",
+                    "${Calc.fmtTime(trip.startTime)} to ${Calc.fmtTime(trip.endTime)}. Source: ${Source.exportLabel(trip.source, trip.edited)}",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))
@@ -736,6 +823,24 @@ private fun TripDialog(
                     label = { Text("Notes (client, purpose)") },
                     modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(Modifier.height(12.dp))
+                Text("Fix this drive", fontWeight = FontWeight.Bold)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        onSaveNotes(notes)
+                        onEdit()
+                    }) { Text("Edit") }
+                    OutlinedButton(onClick = {
+                        onSaveNotes(notes)
+                        onSplit()
+                    }) { Text("Split") }
+                    if (next != null) {
+                        OutlinedButton(onClick = {
+                            onSaveNotes(notes)
+                            onMerge()
+                        }) { Text("Merge with next") }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -1415,17 +1520,26 @@ private fun UpdateBanner(monthsOld: Long, onCheck: () -> Unit, onLater: () -> Un
 // Add a drive by hand
 // ---------------------------------------------------------------------------
 
+/** The form used both to add a drive by hand and to edit one. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun AddDriveDialog(
+private fun DriveFormDialog(
+    title: String,
+    intro: String,
+    confirmLabel: String,
     categories: List<Category>,
-    onAdd: (startMs: Long, endMs: Long, miles: Double, categoryId: Long?, notes: String) -> Unit,
+    showExtras: Boolean,
+    initialDay: Long = LocalDate.now().toEpochDay(),
+    initialStartMin: Int = 9 * 60,
+    initialEndMin: Int = 9 * 60 + 30,
+    initialMiles: String = "",
+    onSave: (startMs: Long, endMs: Long, miles: Double, categoryId: Long?, notes: String, day: Long, startMin: Int, endMin: Int) -> Unit,
     onClose: () -> Unit
 ) {
-    var day by rememberSaveable { mutableLongStateOf(LocalDate.now().toEpochDay()) }
-    var startMin by rememberSaveable { mutableIntStateOf(9 * 60) }
-    var endMin by rememberSaveable { mutableIntStateOf(9 * 60 + 30) }
-    var milesText by rememberSaveable { mutableStateOf("") }
+    var day by rememberSaveable { mutableLongStateOf(initialDay) }
+    var startMin by rememberSaveable { mutableIntStateOf(initialStartMin) }
+    var endMin by rememberSaveable { mutableIntStateOf(initialEndMin) }
+    var milesText by rememberSaveable { mutableStateOf(initialMiles) }
     var categoryId by rememberSaveable { mutableStateOf<Long?>(null) }
     var notes by rememberSaveable { mutableStateOf("") }
     var picking by rememberSaveable { mutableStateOf("") } // "", "date", "start", "end"
@@ -1440,13 +1554,10 @@ private fun AddDriveDialog(
 
     AlertDialog(
         onDismissRequest = onClose,
-        title = { Text("Add a drive by hand") },
+        title = { Text(title) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text(
-                    "For drives the app missed. It will be marked \"Added by hand\" in reports.",
-                    style = MaterialTheme.typography.bodySmall
-                )
+                Text(intro, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = { picking = "date" }, modifier = Modifier.fillMaxWidth()) {
                     Text("Date: ${Calc.fmtDay(LocalDate.ofEpochDay(day))}")
@@ -1459,6 +1570,9 @@ private fun AddDriveDialog(
                         Text("End ${clock(endMin)}")
                     }
                 }
+                if (endMin < startMin) {
+                    Text("Ends the next day.", style = MaterialTheme.typography.bodySmall)
+                }
                 OutlinedTextField(
                     value = milesText,
                     onValueChange = { milesText = it.filter { c -> c.isDigit() || c == '.' }.take(7) },
@@ -1467,23 +1581,25 @@ private fun AddDriveDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(8.dp))
-                Text("Category (optional)", fontWeight = FontWeight.Bold)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    categories.forEach { cat ->
-                        FilterChip(
-                            selected = categoryId == cat.id,
-                            onClick = { categoryId = if (categoryId == cat.id) null else cat.id },
-                            label = { Text(cat.name) }
-                        )
+                if (showExtras) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Category (optional)", fontWeight = FontWeight.Bold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        categories.forEach { cat ->
+                            FilterChip(
+                                selected = categoryId == cat.id,
+                                onClick = { categoryId = if (categoryId == cat.id) null else cat.id },
+                                label = { Text(cat.name) }
+                            )
+                        }
                     }
+                    OutlinedTextField(
+                        value = notes,
+                        onValueChange = { notes = it.take(AppViewModel.MAX_NOTES) },
+                        label = { Text("Notes (optional)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
-                OutlinedTextField(
-                    value = notes,
-                    onValueChange = { notes = it.take(AppViewModel.MAX_NOTES) },
-                    label = { Text("Notes (optional)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
                 error?.let {
                     Spacer(Modifier.height(4.dp))
                     Text(it, color = MaterialTheme.colorScheme.error)
@@ -1495,17 +1611,23 @@ private fun AddDriveDialog(
                 val miles = milesText.toDoubleOrNull()
                 val date = LocalDate.ofEpochDay(day)
                 val zone = ZoneId.systemDefault()
-                val start = date.atStartOfDay(zone).plusMinutes(startMin.toLong()).toInstant().toEpochMilli()
-                val end = date.atStartOfDay(zone).plusMinutes(endMin.toLong()).toInstant().toEpochMilli()
+                val span = TripEdit.times(
+                    date.atStartOfDay(zone).toInstant().toEpochMilli(),
+                    startMin,
+                    endMin,
+                    date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+                )
                 error = when {
                     !Validation.isValidManualMiles(miles) ->
                         "Enter the miles, more than 0 and up to ${Validation.MAX_MANUAL_MILES.toInt()}."
-                    end <= start -> "The end time must be after the start time."
+                    span == null -> "The start and end times can't be the same."
                     date.isAfter(LocalDate.now()) -> "The date can't be in the future."
                     else -> null
                 }
-                if (error == null && miles != null) onAdd(start, end, miles, categoryId, notes)
-            }) { Text("Add drive") }
+                if (error == null && miles != null && span != null) {
+                    onSave(span.first, span.second, miles, categoryId, notes, day, startMin, endMin)
+                }
+            }) { Text(confirmLabel) }
         },
         dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } }
     )
@@ -1529,27 +1651,79 @@ private fun AddDriveDialog(
                 dismissButton = { TextButton(onClick = { picking = "" }) { Text("Cancel") } }
             ) { DatePicker(state = state) }
         }
-        "start", "end" -> {
-            val current = if (picking == "start") startMin else endMin
-            val state = rememberTimePickerState(
-                initialHour = current / 60,
-                initialMinute = current % 60,
-                is24Hour = false
-            )
-            AlertDialog(
-                onDismissRequest = { picking = "" },
-                title = { Text(if (picking == "start") "Start time" else "End time") },
-                text = { TimeInput(state = state) },
-                confirmButton = {
-                    TextButton(onClick = {
-                        val value = state.hour * 60 + state.minute
-                        if (picking == "start") startMin = value else endMin = value
-                        picking = ""
-                    }) { Text("OK") }
-                },
-                dismissButton = { TextButton(onClick = { picking = "" }) { Text("Cancel") } }
-            )
-        }
+        "start", "end" -> TimePickDialog(
+            title = if (picking == "start") "Start time" else "End time",
+            initialMinutes = if (picking == "start") startMin else endMin,
+            onPick = { value ->
+                if (picking == "start") startMin = value else endMin = value
+                picking = ""
+            },
+            onClose = { picking = "" }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimePickDialog(title: String, initialMinutes: Int, onPick: (Int) -> Unit, onClose: () -> Unit) {
+    val state = rememberTimePickerState(
+        initialHour = initialMinutes / 60,
+        initialMinute = initialMinutes % 60,
+        is24Hour = false
+    )
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(title) },
+        text = { TimeInput(state = state) },
+        confirmButton = { TextButton(onClick = { onPick(state.hour * 60 + state.minute) }) { Text("OK") } },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } }
+    )
+}
+
+/** Picks where to split a drive. Miles are divided along the GPS route when there is one. */
+@Composable
+private fun SplitDialog(trip: TripSummary, onSplit: (Long) -> Unit, onClose: () -> Unit) {
+    val zone = ZoneId.systemDefault()
+    val mid = (trip.startTime + trip.endTime) / 2
+    val midLocal = Instant.ofEpochMilli(mid).atZone(zone)
+    var minutes by rememberSaveable { mutableIntStateOf(midLocal.hour * 60 + midLocal.minute) }
+    var picking by rememberSaveable { mutableStateOf(false) }
+
+    // The split time is on the start's date, or the next day for a drive that crosses midnight.
+    val startDate = Instant.ofEpochMilli(trip.startTime).atZone(zone).toLocalDate()
+    var at = startDate.atStartOfDay(zone).plusMinutes(minutes.toLong()).toInstant().toEpochMilli()
+    if (at <= trip.startTime) at = startDate.plusDays(1).atStartOfDay(zone).plusMinutes(minutes.toLong()).toInstant().toEpochMilli()
+    val ok = at > trip.startTime && at < trip.endTime
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Split this drive") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Use this when one drive was really two, for example a stop that was counted as part " +
+                        "of the drive. Pick the time to split it. The miles are divided along the GPS route " +
+                        "when there is one, otherwise by time.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedButton(onClick = { picking = true }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Split at ${Calc.fmtTime(at)}")
+                }
+                Text(
+                    "This drive runs ${Calc.fmtTime(trip.startTime)} to ${Calc.fmtTime(trip.endTime)}.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                if (!ok) Text("Pick a time between the start and the end.", color = MaterialTheme.colorScheme.error)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSplit(at) }, enabled = ok) { Text("Split") } },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } }
+    )
+    if (picking) {
+        TimePickDialog("Split time", minutes, onPick = {
+            minutes = it
+            picking = false
+        }, onClose = { picking = false })
     }
 }
 

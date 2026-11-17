@@ -21,7 +21,8 @@ data class BackupTrip(
     val categoryId: Long?,
     val notes: String,
     val route: String,
-    val source: String
+    val source: String,
+    val edited: Boolean = false
 )
 
 /** Everything in a backup except the drives, which are handed over one at a time. */
@@ -95,6 +96,7 @@ object BackupCodec {
             w.name("notes").value(t.notes)
             w.name("route").value(t.route)
             w.name("source").value(t.source)
+            if (t.edited) w.name("edited").value(true)
             w.endObject()
             count++
         }
@@ -246,6 +248,7 @@ object BackupCodec {
         var notes = ""
         var route = ""
         var source = "gps"
+        var edited = false
         var tooLong = false
         if (!obj(r) {
                 when (it) {
@@ -259,6 +262,7 @@ object BackupCodec {
                         if (text.length > MAX_ROUTE) tooLong = true else route = text
                     }
                     "source" -> source = str(r) ?: "gps"
+                    "edited" -> edited = bool(r) ?: false
                     else -> r.skipValue()
                 }
             }
@@ -268,7 +272,7 @@ object BackupCodec {
         val m = meters ?: return null
         if (tooLong || s <= 0 || e < s || !m.isFinite() || m < 0.0 || m > MAX_METERS) return null
         if (source !in SOURCES) return null
-        return BackupTrip(s, e, m, cat?.toLong(), notes, route, source)
+        return BackupTrip(s, e, m, cat?.toLong(), notes, route, source, edited)
     }
 }
 

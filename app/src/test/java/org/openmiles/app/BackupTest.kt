@@ -22,7 +22,8 @@ class BackupTest {
     private val rates = listOf(BackupRate("BUSINESS", "2026-07-01", 0.76))
     private val trips = listOf(
         BackupTrip(1_700_000_000_000, 1_700_000_600_000, 16093.4, 7, "Line one\nline two, with \"quotes\"", "40.1,-75.2,1;40.2,-75.3,2", "gps"),
-        BackupTrip(1_700_100_000_000, 1_700_100_600_000, 500.0, null, "", "", "manual")
+        BackupTrip(1_700_100_000_000, 1_700_100_600_000, 500.0, null, "", "", "manual"),
+        BackupTrip(1_700_200_000_000, 1_700_200_600_000, 800.0, null, "", "", "gps", edited = true)
     )
 
     private fun backupText(t: List<BackupTrip> = trips): String {
@@ -41,7 +42,7 @@ class BackupTest {
         assertEquals(rates, info.rates)
         assertEquals("0.6.0", info.appVersion)
         assertEquals(1_800_000_000_000, info.createdAt)
-        assertEquals(2, info.trips)
+        assertEquals(3, info.trips)
         assertEquals(0, info.rejected)
     }
 

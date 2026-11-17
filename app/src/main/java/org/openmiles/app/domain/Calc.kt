@@ -135,7 +135,7 @@ object Csv {
                         String.format(Locale.US, "%.3f", rate),
                         String.format(Locale.US, "%.2f", value),
                         esc(t.notes),
-                        esc(Source.label(t.source))
+                        esc(Source.exportLabel(t.source, t.edited))
                     ).joinToString(",")
                 ).append("\n")
             }

@@ -31,6 +31,7 @@ import org.openmiles.app.domain.BackupTrip
 import org.openmiles.app.domain.Calc
 import org.openmiles.app.domain.ImportedDrive
 import org.openmiles.app.domain.TimelineImport
+import org.openmiles.app.domain.TripEdit
 import org.openmiles.app.domain.Validation
 import org.openmiles.app.tracking.AutoDetect
 import org.openmiles.app.tracking.DraftStore
@@ -123,7 +124,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** A drive typed in by hand, for when the app was off. Marked so reports can tell. */
     fun addManualTrip(startMs: Long, endMs: Long, miles: Double, categoryId: Long?, notes: String) {
-        if (endMs <= startMs || !Validation.isValidManualMiles(miles)) return
+        if (endMs <= startMs || endMs - startMs > MAX_DRIVE_MS || !Validation.isValidManualMiles(miles)) return
         viewModelScope.launch {
             db.tripDao().insert(
                 Trip(
@@ -135,6 +136,60 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     source = Source.MANUAL
                 )
             )
+        }
+    }
+
+    // ---- Editing, splitting and merging drives -------------------------------------------------
+
+    /** Changes a drive's times and miles. The drive is marked as edited in reports. */
+    fun editTrip(id: Long, startMs: Long, endMs: Long, miles: Double) {
+        if (endMs <= startMs || endMs - startMs > MAX_DRIVE_MS || !Validation.isValidManualMiles(miles)) return
+        viewModelScope.launch {
+            val t = db.tripDao().get(id) ?: return@launch
+            db.tripDao().update(
+                t.copy(startTime = startMs, endTime = endMs, distanceMeters = miles * Calc.METERS_PER_MILE, edited = true)
+            )
+        }
+    }
+
+    /** Splits one drive into two at [atMs], dividing the miles along the GPS route when there is one. */
+    fun splitTrip(id: Long, atMs: Long) {
+        viewModelScope.launch {
+            db.withTransaction {
+                val t = db.tripDao().get(id) ?: return@withTransaction
+                val parts = TripEdit.split(t.startTime, t.endTime, t.distanceMeters, t.route, atMs)
+                    ?: return@withTransaction
+                db.tripDao().update(
+                    t.copy(endTime = atMs, distanceMeters = parts.firstMeters, route = parts.firstRoute, edited = true)
+                )
+                db.tripDao().insert(
+                    t.copy(id = 0, startTime = atMs, distanceMeters = parts.secondMeters, route = parts.secondRoute, edited = true)
+                )
+            }
+        }
+    }
+
+    /** Joins a drive with the one after it, for example when a stop split one trip in two. */
+    fun mergeTrips(firstId: Long, secondId: Long) {
+        if (firstId == secondId) return
+        viewModelScope.launch {
+            db.withTransaction {
+                val a0 = db.tripDao().get(firstId) ?: return@withTransaction
+                val b0 = db.tripDao().get(secondId) ?: return@withTransaction
+                val (a, b) = if (a0.startTime <= b0.startTime) a0 to b0 else b0 to a0
+                db.tripDao().update(
+                    a.copy(
+                        endTime = maxOf(a.endTime, b.endTime),
+                        distanceMeters = a.distanceMeters + b.distanceMeters,
+                        categoryId = a.categoryId ?: b.categoryId,
+                        notes = TripEdit.mergeNotes(a.notes, b.notes, MAX_NOTES),
+                        route = TripEdit.mergeRoutes(a.route, b.route),
+                        source = if (a.source == b.source) a.source else Source.MANUAL,
+                        edited = true
+                    )
+                )
+                db.tripDao().deleteById(b.id)
+            }
         }
     }
 
@@ -257,7 +312,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             val page = db.tripDao().pageNow(BACKUP_PAGE, offset)
                             if (page.isEmpty()) break
                             page.forEach {
-                                emit(BackupTrip(it.startTime, it.endTime, it.distanceMeters, it.categoryId, it.notes, it.route, it.source))
+                                emit(BackupTrip(it.startTime, it.endTime, it.distanceMeters, it.categoryId, it.notes, it.route, it.source, it.edited))
                             }
                             offset += page.size
                         }
@@ -371,7 +426,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                     categoryId = t.categoryId?.let { id -> idMap[id] },
                                     notes = t.notes,
                                     route = t.route,
-                                    source = t.source
+                                    source = t.source,
+                                    edited = t.edited
                                 )
                                 if (batch.size >= BACKUP_PAGE) {
                                     db.tripDao().insertAllNow(batch.toList())
@@ -401,6 +457,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         const val BACKUP_PAGE = 200
+        const val MAX_DRIVE_MS = 24 * 3_600_000L
         const val MAX_NOTES = 200
         const val MAX_CATEGORY_NAME = 40
     }
