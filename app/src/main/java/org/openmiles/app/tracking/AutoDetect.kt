@@ -19,6 +19,7 @@ import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 import org.openmiles.app.data.AppDatabase
+import org.openmiles.app.data.Rules
 import org.openmiles.app.data.Trip
 import org.openmiles.app.domain.Draft
 import org.openmiles.app.domain.TripRecorder
@@ -307,8 +308,11 @@ object DraftStore {
             DiagLog.add(context, "Found an unfinished drive from before, too short to keep")
             return
         }
-        val dao = AppDatabase.get(context).tripDao()
+        val db = AppDatabase.get(context)
+        val dao = db.tripDao()
         if (dao.countStartingAt(draft.startMs) > 0) return
+        val rules = Rules.load(context, db)
+        if (draft.auto && rules.ignoresRoute(draft.route)) return
         DiagLog.add(
             context,
             String.format(java.util.Locale.US, "Recovered a drive cut off earlier: %.1f mi", draft.meters / 1609.344)
@@ -318,7 +322,8 @@ object DraftStore {
                 startTime = draft.startMs,
                 endTime = draft.endMs,
                 distanceMeters = draft.meters,
-                route = draft.route
+                route = draft.route,
+                categoryId = rules.categoryForRoute(draft.route, draft.startMs)
             )
         )
     }

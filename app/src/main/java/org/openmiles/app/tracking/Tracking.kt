@@ -32,6 +32,7 @@ import kotlinx.coroutines.withContext
 import org.openmiles.app.MainActivity
 import org.openmiles.app.R
 import org.openmiles.app.data.AppDatabase
+import org.openmiles.app.data.Rules
 import org.openmiles.app.data.Trip
 import org.openmiles.app.domain.AutoTripMonitor
 import org.openmiles.app.domain.Draft
@@ -333,17 +334,28 @@ class TrackingService : Service() {
             DiagLog.add(this, "Drive ended ($reason): $result")
         }
         val appContext = applicationContext
+        val wasAuto = before?.auto == true && !userStopped
         scope.launch {
             try {
                 if (finished != null) {
-                    AppDatabase.get(appContext).tripDao().insert(
-                        Trip(
-                            startTime = finished.startTime,
-                            endTime = finished.endTime,
-                            distanceMeters = finished.meters,
-                            route = finished.route
+                    val db = AppDatabase.get(appContext)
+                    val rules = Rules.load(appContext, db)
+                    if (wasAuto && rules.ignoresRoute(finished.route)) {
+                        // Both ends are inside a place the person asked to ignore.
+                        DiagLog.add(appContext, "Drive not kept: it started and ended in an ignored place")
+                    } else {
+                        val categoryId = rules.categoryForRoute(finished.route, finished.startTime)
+                        db.tripDao().insert(
+                            Trip(
+                                startTime = finished.startTime,
+                                endTime = finished.endTime,
+                                distanceMeters = finished.meters,
+                                route = finished.route,
+                                categoryId = categoryId
+                            )
                         )
-                    )
+                        if (categoryId != null) DiagLog.add(appContext, "Drive classified by a rule")
+                    }
                     // Remember where the car is, so the next drive can be noticed quickly.
                     AutoDetect.onParked(appContext, finished.parkedAt)
                 }

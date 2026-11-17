@@ -90,6 +90,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
@@ -100,6 +103,7 @@ import org.openmiles.app.AppViewModel
 import org.openmiles.app.BuildConfig
 import org.openmiles.app.data.Category
 import org.openmiles.app.data.Kind
+import org.openmiles.app.data.Place
 import org.openmiles.app.data.Rate
 import org.openmiles.app.data.Source
 import org.openmiles.app.data.TripSummary
@@ -249,6 +253,15 @@ fun DrivesScreen(vm: AppViewModel) {
     var snoozedUntil by remember { mutableLongStateOf(reminderPrefs.getLong("until", 0L)) }
     var backupSnoozed by remember { mutableLongStateOf(reminderPrefs.getLong("backup_until", 0L)) }
     val lastBackup by vm.lastBackup.collectAsStateWithLifecycle()
+    val rulesMessage by vm.rulesMessage.collectAsStateWithLifecycle()
+    LaunchedEffect(rulesMessage) {
+        rulesMessage?.let {
+            if (it.startsWith("Saved") || it.startsWith("That drive")) {
+                Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                vm.clearRulesMessage()
+            }
+        }
+    }
     // A backup started from the Drives tab reports back here too.
     val backupState by vm.backupState.collectAsStateWithLifecycle()
     LaunchedEffect(backupState) {
@@ -493,6 +506,7 @@ fun DrivesScreen(vm: AppViewModel) {
         TripDialog(
             trip = editing,
             next = next,
+            onNamePlace = { useEnd, name, cat -> vm.addPlaceFromTrip(editing.id, useEnd, name, cat) },
             onEdit = {
                 formFor = editing.id
                 editingId = null
@@ -778,6 +792,7 @@ private fun TripRow(
 private fun TripDialog(
     trip: TripSummary,
     next: TripSummary?,
+    onNamePlace: (useEnd: Boolean, name: String, categoryId: Long?) -> Unit,
     onEdit: () -> Unit,
     onSplit: () -> Unit,
     onMerge: () -> Unit,
@@ -789,6 +804,7 @@ private fun TripDialog(
 ) {
     var notes by remember(trip.id) { mutableStateOf(trip.notes) }
     var confirmDelete by remember(trip.id) { mutableStateOf(false) }
+    var naming by remember(trip.id) { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = {
@@ -841,6 +857,14 @@ private fun TripDialog(
                         }) { Text("Merge with next") }
                     }
                 }
+                if (trip.source != Source.MANUAL) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Name a place", fontWeight = FontWeight.Bold)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { naming = "start" }) { Text("Where it started") }
+                        OutlinedButton(onClick = { naming = "end" }) { Text("Where it ended") }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -855,6 +879,23 @@ private fun TripDialog(
             }
         }
     )
+
+    if (naming.isNotEmpty()) {
+        PlaceDialog(
+            title = if (naming == "start") "Name where this drive started" else "Name where this drive ended",
+            initialName = "",
+            initialCategory = null,
+            initialIgnore = false,
+            categories = categories,
+            showIgnore = false,
+            onSave = { name, cat, _ ->
+                onNamePlace(naming == "end", name, cat)
+                naming = ""
+            },
+            onDelete = null,
+            onClose = { naming = "" }
+        )
+    }
 
     if (confirmDelete) {
         AlertDialog(
@@ -1059,6 +1100,10 @@ fun SettingsScreen(vm: AppViewModel) {
             Spacer(Modifier.height(16.dp))
         }
         item {
+            RulesSection(vm, categories)
+            Spacer(Modifier.height(16.dp))
+        }
+        item {
             AutoDetectSection()
             Spacer(Modifier.height(8.dp))
             DetectionLogSection()
@@ -1151,6 +1196,245 @@ fun SettingsScreen(vm: AppViewModel) {
 }
 
 // ---------------------------------------------------------------------------
+// Auto-classify rules: work hours and named places
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RulesSection(vm: AppViewModel, categories: List<Category>) {
+    val context = LocalContext.current
+    val work by vm.workHours.collectAsStateWithLifecycle()
+    val places by vm.places.collectAsStateWithLifecycle()
+    val message by vm.rulesMessage.collectAsStateWithLifecycle()
+    var picking by remember { mutableStateOf("") } // "", "start", "end"
+    var editing by remember { mutableStateOf<Place?>(null) }
+    var newHere by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    var locating by remember { mutableStateOf(false) }
+    val businessId = categories.firstOrNull { it.builtIn && it.kind == Kind.BUSINESS }?.id
+
+    fun locate() {
+        locating = true
+        try {
+            LocationServices.getFusedLocationProviderClient(context)
+                .getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, CancellationTokenSource().token)
+                .addOnSuccessListener { loc ->
+                    locating = false
+                    if (loc != null) newHere = loc.latitude to loc.longitude
+                    else Toast.makeText(context, "Could not find your location. Try again outside.", Toast.LENGTH_LONG).show()
+                }
+                .addOnFailureListener {
+                    locating = false
+                    Toast.makeText(context, "Could not find your location.", Toast.LENGTH_LONG).show()
+                }
+        } catch (e: SecurityException) {
+            locating = false
+            Toast.makeText(context, "OpenMiles needs location permission for this.", Toast.LENGTH_LONG).show()
+        }
+    }
+    val askLocation = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) locate() else Toast.makeText(context, "OpenMiles needs location permission for this.", Toast.LENGTH_LONG).show()
+    }
+
+    Text("Auto-classify rules", style = MaterialTheme.typography.titleLarge)
+    Text(
+        "Rules pick a category for new drives so you swipe less. A place rule wins over work hours. " +
+            "Rules never change a category you picked yourself.",
+        style = MaterialTheme.typography.bodySmall
+    )
+
+    // Work hours
+    Spacer(Modifier.height(8.dp))
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text("Work hours", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+        Switch(checked = work.enabled, onCheckedChange = { on ->
+            vm.saveWorkHours(work.copy(enabled = on, categoryId = work.categoryId ?: businessId))
+        })
+    }
+    if (work.enabled) {
+        Text("Drives that start during these hours get this category.", style = MaterialTheme.typography.bodySmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            java.time.DayOfWeek.values().forEach { d ->
+                FilterChip(
+                    selected = d in work.days,
+                    onClick = { vm.saveWorkHours(work.copy(days = if (d in work.days) work.days - d else work.days + d)) },
+                    label = { Text(d.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.US)) }
+                )
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { picking = "start" }, modifier = Modifier.weight(1f)) { Text("From ${clockText(work.startMin)}") }
+            OutlinedButton(onClick = { picking = "end" }, modifier = Modifier.weight(1f)) { Text("To ${clockText(work.endMin)}") }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            categories.forEach { c ->
+                FilterChip(
+                    selected = work.categoryId == c.id,
+                    onClick = { vm.saveWorkHours(work.copy(categoryId = c.id)) },
+                    label = { Text(c.name) }
+                )
+            }
+        }
+    }
+
+    // Places
+    Spacer(Modifier.height(12.dp))
+    Text("Places", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Name places like Home, Office or a client. Drives that start or end at a place can get its " +
+            "category. You can also tell the app to ignore drives that start and end in the same place, " +
+            "like moving the car in a parking lot. To name a place from a drive, tap the drive.",
+        style = MaterialTheme.typography.bodySmall
+    )
+    if (places.isEmpty()) {
+        Text("No places yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    places.forEach { p ->
+        val cat = categories.firstOrNull { it.id == p.categoryId }
+        Row(
+            Modifier.fillMaxWidth().clickable { editing = p }.padding(vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(p.name, fontWeight = FontWeight.Bold)
+                Text(
+                    buildList {
+                        add(if (cat != null) "Drives to or from here: ${cat.name}" else "No category rule")
+                        if (p.ignoreDrives) add("short moves here are ignored")
+                    }.joinToString(". "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            TextButton(onClick = { editing = p }) { Text("Edit") }
+        }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(
+            onClick = {
+                val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                    PackageManager.PERMISSION_GRANTED
+                if (granted) locate() else askLocation.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+            },
+            enabled = !locating
+        ) { Text(if (locating) "Finding you..." else "Add where I am now") }
+    }
+    Spacer(Modifier.height(8.dp))
+    Button(onClick = { vm.applyRulesToUnclassified() }) { Text("Apply rules to unclassified drives") }
+    message?.let { Text(it, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium) }
+
+    if (picking.isNotEmpty()) {
+        TimePickDialog(
+            title = if (picking == "start") "Work starts" else "Work ends",
+            initialMinutes = if (picking == "start") work.startMin else work.endMin,
+            onPick = { m ->
+                vm.saveWorkHours(if (picking == "start") work.copy(startMin = m) else work.copy(endMin = m))
+                picking = ""
+            },
+            onClose = { picking = "" }
+        )
+    }
+    editing?.let { p ->
+        PlaceDialog(
+            title = "Edit place",
+            initialName = p.name,
+            initialCategory = p.categoryId,
+            initialIgnore = p.ignoreDrives,
+            categories = categories,
+            showIgnore = true,
+            onSave = { name, cat, ignore ->
+                vm.updatePlace(p.copy(name = name, categoryId = cat, ignoreDrives = ignore))
+                editing = null
+            },
+            onDelete = {
+                vm.deletePlace(p)
+                editing = null
+            },
+            onClose = { editing = null }
+        )
+    }
+    newHere?.let { (lat, lng) ->
+        PlaceDialog(
+            title = "Name this place",
+            initialName = "",
+            initialCategory = null,
+            initialIgnore = false,
+            categories = categories,
+            showIgnore = true,
+            onSave = { name, cat, ignore ->
+                vm.addPlace(name, lat, lng, cat, ignore)
+                newHere = null
+            },
+            onDelete = null,
+            onClose = { newHere = null }
+        )
+    }
+}
+
+private fun clockText(minutes: Int): String {
+    val h = minutes / 60
+    val m = minutes % 60
+    val h12 = if (h % 12 == 0) 12 else h % 12
+    return String.format(java.util.Locale.US, "%d:%02d %s", h12, m, if (h < 12) "AM" else "PM")
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PlaceDialog(
+    title: String,
+    initialName: String,
+    initialCategory: Long?,
+    initialIgnore: Boolean,
+    categories: List<Category>,
+    showIgnore: Boolean,
+    onSave: (String, Long?, Boolean) -> Unit,
+    onDelete: (() -> Unit)?,
+    onClose: () -> Unit
+) {
+    var name by remember { mutableStateOf(initialName) }
+    var cat by remember { mutableStateOf(initialCategory) }
+    var ignore by remember { mutableStateOf(initialIgnore) }
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text(title) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(AppViewModel.MAX_CATEGORY_NAME) },
+                    label = { Text("Name, like Home or Office") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text("Drives that start or end here get:", fontWeight = FontWeight.Bold)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(selected = cat == null, onClick = { cat = null }, label = { Text("No rule") })
+                    categories.forEach { c ->
+                        FilterChip(selected = cat == c.id, onClick = { cat = c.id }, label = { Text(c.name) })
+                    }
+                }
+                if (showIgnore) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = ignore, onCheckedChange = { ignore = it })
+                        Text(
+                            "Ignore automatic drives that start and end here (within about 150 m)",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
+                if (onDelete != null) {
+                    TextButton(onClick = onDelete) { Text("Remove this place", color = MaterialTheme.colorScheme.error) }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(name.trim(), cat, ignore) }, enabled = name.isNotBlank()) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } }
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Backup and restore
 // ---------------------------------------------------------------------------
 
@@ -1194,7 +1478,7 @@ private fun BackupSection(vm: AppViewModel) {
             color = MaterialTheme.colorScheme.primary
         )
         is AppViewModel.BackupState.Restored -> Text(
-            "Restore finished. Added ${st.drives} drives, ${st.categories} categories and ${st.rates} rates.",
+            "Restore finished. Added ${st.drives} drives, ${st.categories} categories, ${st.rates} rates and ${st.places} places.",
             color = MaterialTheme.colorScheme.primary
         )
         is AppViewModel.BackupState.Failed -> Text(st.message, color = MaterialTheme.colorScheme.error)
@@ -1211,6 +1495,7 @@ private fun BackupSection(vm: AppViewModel) {
                     Text("Already on this phone (skipped): ${st.alreadyHere}", style = MaterialTheme.typography.bodySmall)
                     if (st.newCategories > 0) Text("Categories to add: ${st.newCategories}", style = MaterialTheme.typography.bodySmall)
                     if (st.newRates > 0) Text("Rates to add: ${st.newRates}", style = MaterialTheme.typography.bodySmall)
+                    if (st.newPlaces > 0) Text("Places to add: ${st.newPlaces}", style = MaterialTheme.typography.bodySmall)
                     if (st.info.rejected > 0) {
                         Text("Damaged entries left out: ${st.info.rejected}", style = MaterialTheme.typography.bodySmall)
                     }
@@ -1223,7 +1508,7 @@ private fun BackupSection(vm: AppViewModel) {
             confirmButton = {
                 TextButton(
                     onClick = { vm.restoreBackup(st) },
-                    enabled = st.newDrives + st.newCategories + st.newRates > 0
+                    enabled = st.newDrives + st.newCategories + st.newRates + st.newPlaces > 0 || st.info.workHours != null
                 ) { Text("Restore") }
             },
             dismissButton = { TextButton(onClick = { vm.clearBackupState() }) { Text("Cancel") } }

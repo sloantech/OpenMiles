@@ -10,6 +10,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.openmiles.app.data.AppDatabase
+import org.openmiles.app.data.Place
 import org.openmiles.app.data.Source
 import org.openmiles.app.data.Trip
 import org.robolectric.RobolectricTestRunner
@@ -147,6 +148,54 @@ class DatabaseUpgradeTest {
             assertEquals("from v2", trips[0].notes)
             assertEquals(Source.TIMELINE, trips[0].source)
             assertEquals(false, trips[0].edited)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun version3DatabaseUpgradesAndPlacesWork() {
+        val name = "upgrade-test-v3.db"
+        context.deleteDatabase(name)
+        val file = context.getDatabasePath(name).apply { parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { old ->
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `trips` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`startTime` INTEGER NOT NULL, `endTime` INTEGER NOT NULL, `distanceMeters` REAL NOT NULL, " +
+                    "`categoryId` INTEGER, `notes` TEXT NOT NULL, `route` TEXT NOT NULL, " +
+                    "`source` TEXT NOT NULL DEFAULT 'gps', `edited` INTEGER NOT NULL DEFAULT 0)"
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `categories` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`name` TEXT NOT NULL, `kind` TEXT NOT NULL, `builtIn` INTEGER NOT NULL)"
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `rates` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                    "`kind` TEXT NOT NULL, `effectiveFrom` TEXT NOT NULL, `dollarsPerMile` REAL NOT NULL)"
+            )
+            old.execSQL(
+                "INSERT INTO trips (startTime, endTime, distanceMeters, categoryId, notes, route, source, edited) " +
+                    "VALUES (1700000000000, 1700000600000, 5000.0, NULL, 'from v3', '40.0,-75.0,1;40.1,-75.0,2', 'gps', 1)"
+            )
+            old.version = 3
+        }
+        val db = Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(*AppDatabase.ALL_MIGRATIONS)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val trips = runBlocking { db.tripDao().observeSummaries().first() }
+            assertEquals(1, trips.size)
+            assertEquals(true, trips[0].edited)
+            runBlocking { db.placeDao().insert(Place(name = "Office", lat = 40.1, lng = -75.0, categoryId = 5)) }
+            assertEquals(1, db.placeDao().allNow().size)
+            val page = db.tripDao().unclassifiedAfterNow(0, 10)
+            assertEquals(1, page.size)
+            db.tripDao().setCategoryIfEmptyNow(page[0].id, 9)
+            db.tripDao().setCategoryIfEmptyNow(page[0].id, 10) // must not overwrite
+            assertEquals(9L, runBlocking { db.tripDao().get(page[0].id) }!!.categoryId)
+            runBlocking { db.placeDao().clearCategory(5) }
+            assertEquals(null, db.placeDao().allNow()[0].categoryId)
         } finally {
             db.close()
         }

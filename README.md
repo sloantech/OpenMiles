@@ -20,6 +20,8 @@ so compare your first weeks of drives against another tracker or your odometer.
   You can add new rates in Settings.
 - Reports for any date range (this month, last quarter, a custom range) with totals by category
   and a CSV spreadsheet export.
+- Auto-classify rules: work hours, and named places like Home or Office, give new drives a
+  category automatically. Places can also ignore short moves, like in a parking lot.
 - Edit, split or merge drives. Changed drives are marked "edited" in reports.
 - Add a drive by hand when the app was off, or import past drives from Google Maps Timeline.
   Every drive shows where it came from, in the app and in exports.
@@ -32,7 +34,7 @@ so compare your first weeks of drives against another tracker or your odometer.
 ## What comes next
 
 - Import drives from MileIQ (waiting on a sample export file)
-- Frequent places, round-trip grouping, auto-classify rules, work hours
+- Pause detection for a set time
 - PDF reports and a map view
 
 ## How to install it on your phone

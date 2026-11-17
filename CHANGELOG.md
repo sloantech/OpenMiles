@@ -3,6 +3,25 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.8.0] - 2026-11-17
+
+### Added
+- Auto-classify rules (Settings, Auto-classify rules), so you swipe less:
+  - Work hours: drives that start during your work hours on your work days get a category,
+    such as Business. Overnight shifts work too.
+  - Places: name places like Home, Office or a client, either where you are now or from the
+    start or end of any drive. Drives that start or end at a place get its category.
+    Where a drive ends wins over where it started, and place rules win over work hours.
+  - Ignore short moves: mark a place so automatic drives that start and end inside it, like
+    moving the car in a parking lot, are not recorded.
+- "Apply rules to unclassified drives" runs your rules over drives you have not classified yet,
+  including Google Timeline imports. Rules never change a category you picked yourself.
+- New drives, recovered drives, Timeline imports and drives added by hand all use the rules.
+- Backups now include places and the work-hours rule.
+
+### Changed
+- The database has a new table for places. Existing drives are kept unchanged.
+
 ## [0.7.0] - 2026-11-17
 
 ### Added

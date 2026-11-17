@@ -25,6 +25,15 @@ data class BackupTrip(
     val edited: Boolean = false
 )
 
+data class BackupPlace(
+    val name: String,
+    val lat: Double,
+    val lng: Double,
+    val radiusMeters: Double,
+    val categoryId: Long?,
+    val ignoreDrives: Boolean
+)
+
 /** Everything in a backup except the drives, which are handed over one at a time. */
 data class BackupInfo(
     val formatVersion: Int,
@@ -33,7 +42,10 @@ data class BackupInfo(
     val categories: List<BackupCategory>,
     val rates: List<BackupRate>,
     val trips: Int,
-    val rejected: Int
+    val rejected: Int,
+    val places: List<BackupPlace> = emptyList(),
+    /** Null when the backup has no work-hours rule (for example, from an older version). */
+    val workHours: WorkHours? = null
 )
 
 object BackupCodec {
@@ -48,6 +60,7 @@ object BackupCodec {
     private const val MAX_METERS = 2_000_000.0
     private const val MAX_CATEGORIES = 1_000
     private const val MAX_RATES = 1_000
+    private const val MAX_PLACES = 1_000
 
     class NotABackup(message: String) : Exception(message)
 
@@ -58,6 +71,8 @@ object BackupCodec {
         createdAt: Long,
         categories: List<BackupCategory>,
         rates: List<BackupRate>,
+        places: List<BackupPlace> = emptyList(),
+        workHours: WorkHours? = null,
         eachTrip: (emit: (BackupTrip) -> Unit) -> Unit
     ): Int {
         var count = 0
@@ -86,6 +101,27 @@ object BackupCodec {
             w.endObject()
         }
         w.endArray()
+        w.name("places").beginArray()
+        places.forEach {
+            w.beginObject()
+            w.name("name").value(it.name)
+            w.name("lat").value(it.lat)
+            w.name("lng").value(it.lng)
+            w.name("radiusMeters").value(it.radiusMeters)
+            if (it.categoryId != null) w.name("categoryId").value(it.categoryId)
+            w.name("ignoreDrives").value(it.ignoreDrives)
+            w.endObject()
+        }
+        w.endArray()
+        if (workHours != null) {
+            w.name("workHours").beginObject()
+            w.name("enabled").value(workHours.enabled)
+            w.name("days").value(workHours.daysText())
+            w.name("startMin").value(workHours.startMin.toLong())
+            w.name("endMin").value(workHours.endMin.toLong())
+            if (workHours.categoryId != null) w.name("categoryId").value(workHours.categoryId)
+            w.endObject()
+        }
         w.name("trips").beginArray()
         eachTrip { t ->
             w.beginObject()
@@ -119,6 +155,8 @@ object BackupCodec {
         var createdAt = 0L
         val categories = mutableListOf<BackupCategory>()
         val rates = mutableListOf<BackupRate>()
+        val places = mutableListOf<BackupPlace>()
+        var work: WorkHours? = null
         var trips = 0
         var rejected = 0
         r.beginObject()
@@ -136,6 +174,11 @@ object BackupCodec {
                     val x = readRate(r)
                     if (x != null && rates.size < MAX_RATES) rates += x else rejected++
                 }
+                "places" -> array(r) {
+                    val p = readPlace(r)
+                    if (p != null && places.size < MAX_PLACES) places += p else rejected++
+                }
+                "workHours" -> work = readWorkHours(r)
                 "trips" -> {
                     // The header must come first, so a wrong file is refused before any drive is used.
                     if (format != FORMAT) throw notBackup()
@@ -157,7 +200,7 @@ object BackupCodec {
         }
         r.endObject()
         if (format != FORMAT || version < 1) throw notBackup()
-        return BackupInfo(version, appVersion, createdAt, categories, rates, trips, rejected)
+        return BackupInfo(version, appVersion, createdAt, categories, rates, trips, rejected, places, work)
     }
 
     private fun notBackup() = NotABackup("That file is not an OpenMiles backup.")
@@ -240,6 +283,56 @@ object BackupCodec {
         return BackupRate(kind!!, day.toString(), value)
     }
 
+    private fun readPlace(r: JsonReader): BackupPlace? {
+        var name: String? = null
+        var lat: Double? = null
+        var lng: Double? = null
+        var radius: Double? = null
+        var cat: Double? = null
+        var ignore = false
+        if (!obj(r) {
+                when (it) {
+                    "name" -> name = str(r)
+                    "lat" -> lat = num(r)
+                    "lng" -> lng = num(r)
+                    "radiusMeters" -> radius = num(r)
+                    "categoryId" -> cat = num(r)
+                    "ignoreDrives" -> ignore = bool(r) ?: false
+                    else -> r.skipValue()
+                }
+            }
+        ) return null
+        val n = name?.trim()?.take(MAX_NAME)
+        val la = lat ?: return null
+        val ln = lng ?: return null
+        val rad = radius ?: 150.0
+        if (n.isNullOrEmpty() || la !in -90.0..90.0 || ln !in -180.0..180.0 || !rad.isFinite() || rad < 25.0 || rad > 5_000.0) return null
+        return BackupPlace(n, la, ln, rad, cat?.toLong(), ignore)
+    }
+
+    private fun readWorkHours(r: JsonReader): WorkHours? {
+        var enabled = false
+        var days: String? = null
+        var start: Double? = null
+        var end: Double? = null
+        var cat: Double? = null
+        if (!obj(r) {
+                when (it) {
+                    "enabled" -> enabled = bool(r) ?: false
+                    "days" -> days = str(r)
+                    "startMin" -> start = num(r)
+                    "endMin" -> end = num(r)
+                    "categoryId" -> cat = num(r)
+                    else -> r.skipValue()
+                }
+            }
+        ) return null
+        val s = start?.toInt() ?: return null
+        val e = end?.toInt() ?: return null
+        if (s !in 0..1439 || e !in 0..1439) return null
+        return WorkHours(enabled, WorkHours.parseDays(days), s, e, cat?.toLong())
+    }
+
     private fun readTrip(r: JsonReader): BackupTrip? {
         var start: Double? = null
         var end: Double? = null
@@ -287,6 +380,10 @@ object BackupMerge {
     /** Rates in the backup that this phone does not have (matched by kind and start date). */
     fun missingRates(backup: List<BackupRate>, existing: Set<Pair<String, String>>): List<BackupRate> =
         backup.filter { (it.kind to it.effectiveFrom) !in existing }.distinctBy { it.kind to it.effectiveFrom }
+
+    /** Places match when the name and the spot (to about 10 m) are the same. */
+    fun placeKey(name: String, lat: Double, lng: Double) =
+        name.trim().lowercase() + "|" + String.format(java.util.Locale.US, "%.4f,%.4f", lat, lng)
 
     /** A drive is already here when one with the same start and end time exists. */
     fun spanKey(start: Long, end: Long) = start to end

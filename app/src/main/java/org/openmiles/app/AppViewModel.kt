@@ -18,14 +18,19 @@ import kotlinx.coroutines.launch
 import org.openmiles.app.data.AppDatabase
 import org.openmiles.app.data.Category
 import org.openmiles.app.data.Kind
+import org.openmiles.app.data.Place
 import org.openmiles.app.data.Rate
+import org.openmiles.app.data.Rules
 import org.openmiles.app.data.Seed
 import org.openmiles.app.data.Source
 import org.openmiles.app.data.Trip
+import org.openmiles.app.data.WorkHoursStore
+import org.openmiles.app.domain.AutoClassify
 import org.openmiles.app.domain.BackupCategory
 import org.openmiles.app.domain.BackupCodec
 import org.openmiles.app.domain.BackupInfo
 import org.openmiles.app.domain.BackupMerge
+import org.openmiles.app.domain.BackupPlace
 import org.openmiles.app.domain.BackupRate
 import org.openmiles.app.domain.BackupTrip
 import org.openmiles.app.domain.Calc
@@ -33,6 +38,7 @@ import org.openmiles.app.domain.ImportedDrive
 import org.openmiles.app.domain.TimelineImport
 import org.openmiles.app.domain.TripEdit
 import org.openmiles.app.domain.Validation
+import org.openmiles.app.domain.WorkHours
 import org.openmiles.app.tracking.AutoDetect
 import org.openmiles.app.tracking.DraftStore
 import org.openmiles.app.tracking.LiveTrip
@@ -96,6 +102,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // Both steps succeed together or not at all.
             db.withTransaction {
                 db.tripDao().clearCategory(category.id)
+                db.placeDao().clearCategory(category.id)
                 db.categoryDao().delete(category)
             }
         }
@@ -126,17 +133,99 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun addManualTrip(startMs: Long, endMs: Long, miles: Double, categoryId: Long?, notes: String) {
         if (endMs <= startMs || endMs - startMs > MAX_DRIVE_MS || !Validation.isValidManualMiles(miles)) return
         viewModelScope.launch {
+            // No category picked: let the work-hours rule decide, if there is one.
+            val chosen = categoryId ?: Rules.load(getApplication(), db).categoryFor(null, null, startMs)
             db.tripDao().insert(
                 Trip(
                     startTime = startMs,
                     endTime = endMs,
                     distanceMeters = miles * Calc.METERS_PER_MILE,
-                    categoryId = categoryId,
+                    categoryId = chosen,
                     notes = notes.trim().take(MAX_NOTES),
                     source = Source.MANUAL
                 )
             )
         }
+    }
+
+    // ---- Places, work hours and auto-classify rules ----------------------------------------------
+
+    val places = db.placeDao().observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _work = MutableStateFlow(WorkHoursStore.load(app))
+    val workHours: StateFlow<WorkHours> = _work
+
+    private val _rulesMessage = MutableStateFlow<String?>(null)
+    val rulesMessage: StateFlow<String?> = _rulesMessage
+
+    fun saveWorkHours(work: WorkHours) {
+        WorkHoursStore.save(getApplication(), work)
+        _work.value = work
+    }
+
+    fun addPlace(name: String, lat: Double, lng: Double, categoryId: Long?, ignoreDrives: Boolean) {
+        val clean = name.trim().take(MAX_CATEGORY_NAME)
+        if (clean.isEmpty() || !lat.isFinite() || !lng.isFinite() || lat !in -90.0..90.0 || lng !in -180.0..180.0) return
+        viewModelScope.launch {
+            db.placeDao().insert(Place(name = clean, lat = lat, lng = lng, categoryId = categoryId, ignoreDrives = ignoreDrives))
+        }
+    }
+
+    /** Names the start or end of a drive as a place. */
+    fun addPlaceFromTrip(tripId: Long, useEnd: Boolean, name: String, categoryId: Long?) {
+        viewModelScope.launch {
+            val t = db.tripDao().get(tripId) ?: return@launch
+            val ends = AutoClassify.ends(t.route)
+            if (ends == null) {
+                _rulesMessage.value = "That drive has no GPS route, so it has no place to name."
+                return@launch
+            }
+            val p = if (useEnd) ends.second else ends.first
+            addPlace(name, p.first, p.second, categoryId, false)
+            _rulesMessage.value = "Saved \"${name.trim()}\" as a place."
+        }
+    }
+
+    fun updatePlace(place: Place) {
+        viewModelScope.launch { db.placeDao().update(place.copy(name = place.name.trim().take(MAX_CATEGORY_NAME))) }
+    }
+
+    fun deletePlace(place: Place) {
+        viewModelScope.launch { db.placeDao().delete(place) }
+    }
+
+    /** Runs the rules over every drive that has no category yet. Never changes a chosen category. */
+    fun applyRulesToUnclassified() {
+        _rulesMessage.value = "Applying rules..."
+        val app = getApplication<Application>()
+        viewModelScope.launch(Dispatchers.IO) {
+            _rulesMessage.value = try {
+                var changed = 0
+                db.runInTransaction {
+                    val rules = Rules.loadNow(app, db)
+                    var after = 0L
+                    while (true) {
+                        val page = db.tripDao().unclassifiedAfterNow(after, BACKUP_PAGE)
+                        if (page.isEmpty()) break
+                        page.forEach { t ->
+                            rules.categoryForRoute(t.route, t.startTime)?.let {
+                                db.tripDao().setCategoryIfEmptyNow(t.id, it)
+                                changed++
+                            }
+                        }
+                        after = page.last().id
+                    }
+                }
+                if (changed == 0) "No unclassified drives matched your rules." else "Classified $changed drives."
+            } catch (e: Exception) {
+                "The rules could not be applied. Nothing was changed."
+            }
+        }
+    }
+
+    fun clearRulesMessage() {
+        _rulesMessage.value = null
     }
 
     // ---- Editing, splitting and merging drives -------------------------------------------------
@@ -239,6 +328,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _import.value = ImportState.Saving
         viewModelScope.launch(Dispatchers.IO) {
             _import.value = try {
+                val rules = Rules.load(getApplication(), db)
                 db.withTransaction {
                     drives.chunked(500).forEach { chunk ->
                         db.tripDao().insertAll(
@@ -251,7 +341,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                                         Locale.US, "%.5f,%.5f,%d;%.5f,%.5f,%d",
                                         it.startLat, it.startLng, it.startMs, it.endLat, it.endLng, it.endMs
                                     ),
-                                    source = Source.TIMELINE
+                                    source = Source.TIMELINE,
+                                    categoryId = rules.categoryFor(
+                                        it.startLat to it.startLng, it.endLat to it.endLng, it.startMs
+                                    )
                                 )
                             }
                         )
@@ -280,9 +373,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val newDrives: Int,
             val alreadyHere: Int,
             val newCategories: Int,
-            val newRates: Int
+            val newRates: Int,
+            val newPlaces: Int
         ) : BackupState()
-        data class Restored(val drives: Int, val categories: Int, val rates: Int) : BackupState()
+        data class Restored(val drives: Int, val categories: Int, val rates: Int, val places: Int) : BackupState()
         data class Failed(val message: String) : BackupState()
     }
 
@@ -301,12 +395,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _backup.value = try {
                 val categories = db.categoryDao().all().map { BackupCategory(it.id, it.name, it.kind, it.builtIn) }
                 val rates = db.rateDao().all().map { BackupRate(it.kind, it.effectiveFrom, it.dollarsPerMile) }
+                val places = db.placeDao().all().map {
+                    BackupPlace(it.name, it.lat, it.lng, it.radiusMeters, it.categoryId, it.ignoreDrives)
+                }
+                val work = WorkHoursStore.load(app)
                 val expected = db.tripDao().count()
                 val out = app.contentResolver.openOutputStream(uri, "wt")
                     ?: throw IllegalStateException("no stream")
                 val written = out.use { stream ->
                     val writer = OutputStreamWriter(stream, Charsets.UTF_8).buffered()
-                    val n = BackupCodec.write(writer, BuildConfig.VERSION_NAME, System.currentTimeMillis(), categories, rates) { emit ->
+                    val n = BackupCodec.write(writer, BuildConfig.VERSION_NAME, System.currentTimeMillis(), categories, rates, places, work) { emit ->
                         var offset = 0
                         while (true) {
                             val page = db.tripDao().pageNow(BACKUP_PAGE, offset)
@@ -358,10 +456,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } ?: throw BackupCodec.NotABackup("Could not open that file.")
                 val catKeys = db.categoryDao().all().map { BackupMerge.key(it.name, it.kind) }.toSet()
                 val rateKeys = db.rateDao().all().map { it.kind to it.effectiveFrom }.toSet()
+                val placeKeys = db.placeDao().all().map { BackupMerge.placeKey(it.name, it.lat, it.lng) }.toSet()
                 BackupState.RestoreReady(
                     uri, info, newDrives, already,
                     BackupMerge.missingCategories(info.categories, catKeys).size,
-                    BackupMerge.missingRates(info.rates, rateKeys).size
+                    BackupMerge.missingRates(info.rates, rateKeys).size,
+                    info.places.map { BackupMerge.placeKey(it.name, it.lat, it.lng) }.distinct().count { it !in placeKeys }
                 )
             } catch (e: BackupCodec.NotABackup) {
                 BackupState.Failed(e.message ?: "That file is not an OpenMiles backup.")
@@ -382,6 +482,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 var added = 0
                 var addedCats = 0
                 var addedRates = 0
+                var addedPlaces = 0
+                var restoredWork: WorkHours? = null
                 // One plain transaction on this background thread: everything is added, or
                 // nothing is if anything goes wrong.
                 db.runInTransaction {
@@ -410,6 +512,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                             newRates.map { Rate(kind = it.kind, effectiveFrom = it.effectiveFrom, dollarsPerMile = it.dollarsPerMile) }
                         )
                         addedRates = newRates.size
+                    }
+                    // Places: add the ones this phone does not have, with their rules.
+                    val placeKeys = db.placeDao().allNow().map { BackupMerge.placeKey(it.name, it.lat, it.lng) }.toMutableSet()
+                    ready.info.places.forEach { p ->
+                        if (placeKeys.add(BackupMerge.placeKey(p.name, p.lat, p.lng))) {
+                            db.placeDao().insertNow(
+                                Place(
+                                    name = p.name, lat = p.lat, lng = p.lng, radiusMeters = p.radiusMeters,
+                                    categoryId = p.categoryId?.let { idMap[it] }, ignoreDrives = p.ignoreDrives
+                                )
+                            )
+                            addedPlaces++
+                        }
+                    }
+                    // Work hours: only if this phone has never set them.
+                    val w = ready.info.workHours
+                    if (w != null && !WorkHoursStore.isSet(app)) {
+                        restoredWork = w.copy(categoryId = w.categoryId?.let { idMap[it] })
                     }
                     // Drives: second pass over the file, adding only ones not already here.
                     val here = db.tripDao().allSpansNow().map { BackupMerge.spanKey(it.startTime, it.endTime) }.toHashSet()
@@ -442,7 +562,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         added += batch.size
                     }
                 }
-                BackupState.Restored(added, addedCats, addedRates)
+                // Saved only after the transaction succeeded.
+                restoredWork?.let { saveWorkHours(it) }
+                BackupState.Restored(added, addedCats, addedRates, addedPlaces)
             } catch (e: Exception) {
                 BackupState.Failed("The restore did not finish, so nothing was changed. Please try again.")
             } catch (e: OutOfMemoryError) {

@@ -8,6 +8,9 @@ import org.junit.Test
 import org.openmiles.app.domain.BackupCategory
 import org.openmiles.app.domain.BackupCodec
 import org.openmiles.app.domain.BackupMerge
+import org.openmiles.app.domain.BackupPlace
+import org.openmiles.app.domain.WorkHours
+import java.time.DayOfWeek
 import org.openmiles.app.domain.BackupRate
 import org.openmiles.app.domain.BackupReminder
 import org.openmiles.app.domain.BackupTrip
@@ -26,9 +29,12 @@ class BackupTest {
         BackupTrip(1_700_200_000_000, 1_700_200_600_000, 800.0, null, "", "", "gps", edited = true)
     )
 
+    private val places = listOf(BackupPlace("Office", 40.1, -75.2, 150.0, 7, false), BackupPlace("Home", 40.0, -75.0, 200.0, null, true))
+    private val work = WorkHours(true, setOf(DayOfWeek.MONDAY, DayOfWeek.FRIDAY), 480, 1020, 1)
+
     private fun backupText(t: List<BackupTrip> = trips): String {
         val out = StringWriter()
-        val n = BackupCodec.write(out, "0.6.0", 1_800_000_000_000, cats, rates) { emit -> t.forEach(emit) }
+        val n = BackupCodec.write(out, "0.6.0", 1_800_000_000_000, cats, rates, places, work) { emit -> t.forEach(emit) }
         assertEquals(t.size, n)
         return out.toString()
     }
@@ -43,6 +49,8 @@ class BackupTest {
         assertEquals("0.6.0", info.appVersion)
         assertEquals(1_800_000_000_000, info.createdAt)
         assertEquals(3, info.trips)
+        assertEquals(places, info.places)
+        assertEquals(work, info.workHours)
         assertEquals(0, info.rejected)
     }
 
@@ -72,6 +80,26 @@ class BackupTest {
     }
 
     @Test
+    fun badPlacesAndWorkHoursAreLeftOut() {
+        val text = backupText().replace(
+            "\"places\":[",
+            "\"places\":[{\"name\":\"X\",\"lat\":95,\"lng\":0},{\"name\":\"\",\"lat\":1,\"lng\":1},{\"name\":\"Y\",\"lat\":1,\"lng\":1,\"radiusMeters\":99999},"
+        ).replace("\"startMin\":480", "\"startMin\":5000")
+        val info = BackupCodec.read(StringReader(text)) {}
+        assertEquals(places, info.places)
+        assertEquals(null, info.workHours)
+    }
+
+    @Test
+    fun olderBackupsWithoutPlacesStillRead() {
+        val out = StringWriter()
+        BackupCodec.write(out, "0.6.0", 1, cats, rates) { emit -> trips.forEach(emit) }
+        val info = BackupCodec.read(StringReader(out.toString())) {}
+        assertEquals(emptyList<BackupPlace>(), info.places)
+        assertEquals(null, info.workHours)
+    }
+
+    @Test
     fun otherFilesAreRefused() {
         assertThrows(BackupCodec.NotABackup::class.java) { BackupCodec.read(StringReader("[]")) {} }
         assertThrows(BackupCodec.NotABackup::class.java) {
@@ -94,6 +122,7 @@ class BackupTest {
         assertEquals(listOf(cats[1]), BackupMerge.missingCategories(cats, existing))
         assertEquals(emptyList<BackupRate>(), BackupMerge.missingRates(rates, setOf("BUSINESS" to "2026-07-01")))
         assertEquals(rates, BackupMerge.missingRates(rates + rates, emptySet()))
+        assertEquals(BackupMerge.placeKey(" Office", 40.10001, -75.2), BackupMerge.placeKey("office ", 40.1, -75.20002))
     }
 
     @Test

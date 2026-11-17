@@ -104,6 +104,20 @@ data class Rate(
     val dollarsPerMile: Double
 )
 
+/** A place the person named. Used for auto-classify rules and for places to ignore. */
+@Entity(tableName = "places")
+data class Place(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val lat: Double,
+    val lng: Double,
+    val radiusMeters: Double = 150.0,
+    /** Drives that start or end here get this category. Null: no rule. */
+    val categoryId: Long? = null,
+    /** Drives that start and end here are not recorded. */
+    @ColumnInfo(defaultValue = "0") val ignoreDrives: Boolean = false
+)
+
 @Dao
 interface TripDao {
     @Query(
@@ -138,6 +152,13 @@ interface TripDao {
 
     @Insert
     fun insertAllNow(trips: List<Trip>)
+
+    /** Unclassified drives after a given id, for applying rules in batches. */
+    @Query("SELECT * FROM trips WHERE categoryId IS NULL AND id > :afterId ORDER BY id LIMIT :limit")
+    fun unclassifiedAfterNow(afterId: Long, limit: Int): List<Trip>
+
+    @Query("UPDATE trips SET categoryId = :categoryId WHERE id = :id AND categoryId IS NULL")
+    fun setCategoryIfEmptyNow(id: Long, categoryId: Long)
 
     @Query("SELECT * FROM trips WHERE id = :id")
     suspend fun get(id: Long): Trip?
@@ -219,15 +240,43 @@ interface RateDao {
     suspend fun deleteFor(kind: String, effectiveFrom: String)
 }
 
+@Dao
+interface PlaceDao {
+    @Query("SELECT * FROM places ORDER BY name")
+    fun observeAll(): Flow<List<Place>>
+
+    @Query("SELECT * FROM places")
+    suspend fun all(): List<Place>
+
+    @Query("SELECT * FROM places")
+    fun allNow(): List<Place>
+
+    @Insert
+    suspend fun insert(place: Place): Long
+
+    @Insert
+    fun insertNow(place: Place): Long
+
+    @Update
+    suspend fun update(place: Place)
+
+    @Delete
+    suspend fun delete(place: Place)
+
+    @Query("UPDATE places SET categoryId = NULL WHERE categoryId = :categoryId")
+    suspend fun clearCategory(categoryId: Long)
+}
+
 @Database(
-    entities = [Trip::class, Category::class, Rate::class],
-    version = 3,
+    entities = [Trip::class, Category::class, Rate::class, Place::class],
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun tripDao(): TripDao
     abstract fun categoryDao(): CategoryDao
     abstract fun rateDao(): RateDao
+    abstract fun placeDao(): PlaceDao
 
     companion object {
         @Volatile
@@ -260,7 +309,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+        /** Version 3 to 4: named places, for auto-classify rules and places to ignore. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `places` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, `lat` REAL NOT NULL, `lng` REAL NOT NULL, " +
+                        "`radiusMeters` REAL NOT NULL, `categoryId` INTEGER, " +
+                        "`ignoreDrives` INTEGER NOT NULL DEFAULT 0)"
+                )
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
     }
 }
 
