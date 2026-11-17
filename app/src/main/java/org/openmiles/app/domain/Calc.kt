@@ -3,6 +3,7 @@ package org.openmiles.app.domain
 import org.openmiles.app.data.Category
 import org.openmiles.app.data.Kind
 import org.openmiles.app.data.Rate
+import org.openmiles.app.data.Source
 import org.openmiles.app.data.TripSummary
 import java.time.Instant
 import java.time.LocalDate
@@ -115,7 +116,7 @@ object Csv {
     ): String {
         val byId = categories.associateBy { it.id }
         val sb = StringBuilder()
-        sb.append("Date,Start,End,Miles,Category,Type,Rate per mile,Value,Notes\n")
+        sb.append("Date,Start,End,Miles,Category,Type,Rate per mile,Value,Notes,Source\n")
         trips
             .filter { Calc.toDate(it.startTime) in range }
             .sortedBy { it.startTime }
@@ -133,7 +134,8 @@ object Csv {
                         esc(cat?.let { Kind.label(it.kind) } ?: ""),
                         String.format(Locale.US, "%.3f", rate),
                         String.format(Locale.US, "%.2f", value),
-                        esc(t.notes)
+                        esc(t.notes),
+                        esc(Source.label(t.source))
                     ).joinToString(",")
                 ).append("\n")
             }

@@ -1,6 +1,9 @@
 package org.openmiles.app.data
 
 import android.content.Context
+import androidx.room.ColumnInfo
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Delete
@@ -38,6 +41,19 @@ data class Category(
     val builtIn: Boolean = false
 )
 
+/** Where a drive came from. Shown in the app and in exports, which matters for tax records. */
+object Source {
+    const val GPS = "gps"
+    const val MANUAL = "manual"
+    const val TIMELINE = "timeline"
+
+    fun label(source: String): String = when (source) {
+        MANUAL -> "Added by hand"
+        TIMELINE -> "Google Timeline"
+        else -> "GPS"
+    }
+}
+
 @Entity(tableName = "trips")
 data class Trip(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -48,8 +64,13 @@ data class Trip(
     val categoryId: Long? = null,
     val notes: String = "",
     /** Route as "lat,lng,time;lat,lng,time;..." */
-    val route: String = ""
+    val route: String = "",
+    /** One of the [Source] values. Added in database version 2. */
+    @ColumnInfo(defaultValue = Source.GPS) val source: String = Source.GPS
 )
+
+/** Just the times of a drive, for checking overlaps. */
+data class TimeSpan(val startTime: Long, val endTime: Long)
 
 /**
  * What the screens need to know about a drive. It leaves out the route, which can be large,
@@ -61,7 +82,8 @@ data class TripSummary(
     val endTime: Long,
     val distanceMeters: Double,
     val categoryId: Long?,
-    val notes: String
+    val notes: String,
+    val source: String = Source.GPS
 )
 
 /** A mileage rate that starts on a date. The newest one on or before the trip date wins. */
@@ -77,13 +99,19 @@ data class Rate(
 @Dao
 interface TripDao {
     @Query(
-        "SELECT id, startTime, endTime, distanceMeters, categoryId, notes " +
+        "SELECT id, startTime, endTime, distanceMeters, categoryId, notes, source " +
             "FROM trips ORDER BY startTime DESC"
     )
     fun observeSummaries(): Flow<List<TripSummary>>
 
     @Insert
     suspend fun insert(trip: Trip): Long
+
+    @Insert
+    suspend fun insertAll(trips: List<Trip>)
+
+    @Query("SELECT startTime, endTime FROM trips")
+    suspend fun allSpans(): List<TimeSpan>
 
     @Query("SELECT COUNT(*) FROM trips WHERE startTime = :start")
     suspend fun countStartingAt(start: Long): Int
@@ -143,7 +171,7 @@ interface RateDao {
 
 @Database(
     entities = [Trip::class, Category::class, Rate::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -161,8 +189,21 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "openmiles.db"
-                ).build().also { instance = it }
+                )
+                    // Never wipe the database on an upgrade. A missing migration must crash in
+                    // testing, not silently delete someone's drives.
+                    .addMigrations(*ALL_MIGRATIONS)
+                    .build().also { instance = it }
             }
+
+        /** Version 1 to 2: remember where each drive came from. Old drives were all GPS. */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `trips` ADD COLUMN `source` TEXT NOT NULL DEFAULT 'gps'")
+            }
+        }
+
+        val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2)
     }
 }
 

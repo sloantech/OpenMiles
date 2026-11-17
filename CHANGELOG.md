@@ -3,6 +3,22 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.4.0] - 2026-11-17
+
+### Added
+- Add a drive by hand, for times the app was off. Marked "Added by hand".
+- Import past drives from Google Maps Timeline (Settings, Import drives). The file is read on
+  the phone only. You pick the years, short drives under a quarter mile can be skipped, and
+  drives you already have are skipped automatically. Marked "Google Timeline".
+- Every drive now shows where it came from (GPS, Added by hand, Google Timeline), including a
+  new Source column in the spreadsheet export.
+- A gentle note when this copy is about two months old, with a Check button that opens the
+  download page in your browser. The app itself still never goes online.
+
+### Changed
+- The database now records each drive's source. Existing drives are kept and marked as GPS.
+  A test on every build checks this upgrade.
+
 ## [0.3.0] - 2026-11-17
 
 ### Added

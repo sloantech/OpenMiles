@@ -24,4 +24,27 @@ object Validation {
             !uri.host.isNullOrBlank() &&
             uri.userInfo == null
     }
+
+    /** Hand-entered drives: more than zero and at most 1,000 miles. */
+    const val MAX_MANUAL_MILES = 1_000.0
+
+    fun isValidManualMiles(miles: Double?): Boolean =
+        miles != null && miles.isFinite() && miles > 0.0 && miles <= MAX_MANUAL_MILES
+}
+
+/** Decides when to suggest checking for a newer version. Works fully offline. */
+object UpdateReminder {
+    const val DAY_MS = 86_400_000L
+    /** Suggest a check once this copy is about two months old. */
+    const val AFTER_DAYS = 60L
+    /** "Not now" waits this long before asking again. */
+    const val SNOOZE_DAYS = 30L
+    /** After tapping Check, wait a week before asking again. */
+    const val AFTER_CHECK_DAYS = 7L
+
+    fun shouldShow(nowMs: Long, builtMs: Long, snoozedUntilMs: Long): Boolean =
+        builtMs > 0 && nowMs - builtMs >= AFTER_DAYS * DAY_MS && nowMs >= snoozedUntilMs
+
+    /** Whole months since this copy was built, for the reminder text. */
+    fun monthsOld(nowMs: Long, builtMs: Long): Long = ((nowMs - builtMs) / (30 * DAY_MS)).coerceAtLeast(0)
 }

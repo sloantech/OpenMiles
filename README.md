@@ -20,12 +20,14 @@ so compare your first weeks of drives against another tracker or your odometer.
   You can add new rates in Settings.
 - Reports for any date range (this month, last quarter, a custom range) with totals by category
   and a CSV spreadsheet export.
+- Add a drive by hand when the app was off, or import past drives from Google Maps Timeline.
+  Every drive shows where it came from, in the app and in exports.
 - A private detection log in Settings shows why each drive started, ended, or was not kept.
 - The version number is shown in Settings, under About.
 
 ## What comes next
 
-- Import drives from MileIQ
+- Import drives from MileIQ (waiting on a sample export file)
 - Frequent places, round-trip grouping, auto-classify rules, work hours
 - PDF reports, map view, backup and restore
 
@@ -36,7 +38,8 @@ so compare your first weeks of drives against another tracker or your odometer.
 3. Open the download and tap **Install**. Android will ask you to allow installs from your
    browser or Files app. That is normal for apps outside the Play Store.
 
-New versions install over the old one. Your drives and settings are kept.
+New versions install over the old one. Your drives and settings are kept. When your copy is
+about two months old, the app shows a small note with a button that opens this download page.
 
 
 ## Changing the name, support link, or app ID

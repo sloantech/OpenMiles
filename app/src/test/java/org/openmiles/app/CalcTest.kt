@@ -106,7 +106,8 @@ class CalcTest {
         )
         val csv = Csv.build(2026, listOf(t), listOf(business), rates)
         val lines = csv.trim().split("\n")
-        assertEquals("Date,Start,End,Miles,Category,Type,Rate per mile,Value,Notes", lines[0])
+        assertEquals("Date,Start,End,Miles,Category,Type,Rate per mile,Value,Notes,Source", lines[0])
+        assertTrue(lines[1].endsWith(",\"GPS\""))
         // Formula is neutralized with a leading apostrophe and quotes are doubled.
         assertTrue(csv, lines[1].contains("\"'=HYPERLINK(\"\"http://bad\"\"), said \"\"hi\"\"\""))
         assertTrue(lines[1].startsWith("2026-08-01,"))

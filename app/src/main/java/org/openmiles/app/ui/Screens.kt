@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -39,6 +40,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -56,8 +59,10 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimeInput
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -83,16 +88,22 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
 import org.openmiles.app.AppConfig
 import org.openmiles.app.AppViewModel
+import org.openmiles.app.BuildConfig
 import org.openmiles.app.data.Category
 import org.openmiles.app.data.Kind
 import org.openmiles.app.data.Rate
+import org.openmiles.app.data.Source
 import org.openmiles.app.data.TripSummary
 import org.openmiles.app.domain.Calc
 import org.openmiles.app.domain.Csv
 import org.openmiles.app.domain.DateRange
+import org.openmiles.app.domain.ImportedDrive
+import org.openmiles.app.domain.TimelineImport
+import org.openmiles.app.domain.UpdateReminder
 import org.openmiles.app.domain.Validation
 import org.openmiles.app.tracking.AutoDetect
 import org.openmiles.app.tracking.DiagLog
@@ -167,7 +178,26 @@ fun DrivesScreen(vm: AppViewModel) {
         if (fine) TrackingService.start(context)
     }
 
+    var addingDrive by remember { mutableStateOf(false) }
+    val reminderPrefs = remember { context.getSharedPreferences("update_reminder", Context.MODE_PRIVATE) }
+    var snoozedUntil by remember { mutableLongStateOf(reminderPrefs.getLong("until", 0L)) }
+    val now = System.currentTimeMillis()
+
     Column(Modifier.fillMaxSize()) {
+        if (UpdateReminder.shouldShow(now, BuildConfig.BUILD_TIME_MS, snoozedUntil)) {
+            UpdateBanner(
+                monthsOld = UpdateReminder.monthsOld(now, BuildConfig.BUILD_TIME_MS),
+                onCheck = {
+                    openLink(context, AppConfig.RELEASES_URL)
+                    snoozedUntil = now + UpdateReminder.AFTER_CHECK_DAYS * UpdateReminder.DAY_MS
+                    reminderPrefs.edit().putLong("until", snoozedUntil).apply()
+                },
+                onLater = {
+                    snoozedUntil = now + UpdateReminder.SNOOZE_DAYS * UpdateReminder.DAY_MS
+                    reminderPrefs.edit().putLong("until", snoozedUntil).apply()
+                }
+            )
+        }
         RecordCard(
             live = live,
             permissionProblem = permissionProblem,
@@ -181,6 +211,10 @@ fun DrivesScreen(vm: AppViewModel) {
             },
             onStop = { TrackingService.stop(context) }
         )
+        TextButton(
+            onClick = { addingDrive = true },
+            modifier = Modifier.padding(horizontal = 8.dp)
+        ) { Text("+ Add a drive by hand") }
 
         if (trips.isEmpty()) {
             Text(
@@ -210,6 +244,17 @@ fun DrivesScreen(vm: AppViewModel) {
                 }
             }
         }
+    }
+
+    if (addingDrive) {
+        AddDriveDialog(
+            categories = categories,
+            onAdd = { start, end, miles, categoryId, notes ->
+                vm.addManualTrip(start, end, miles, categoryId, notes)
+                addingDrive = false
+            },
+            onClose = { addingDrive = false }
+        )
     }
 
     val editing = trips.find { it.id == editingId }
@@ -340,6 +385,13 @@ private fun TripRow(
                     if (trip.notes.isNotBlank()) {
                         Text(trip.notes, style = MaterialTheme.typography.bodySmall)
                     }
+                    if (trip.source != Source.GPS) {
+                        Text(
+                            Source.label(trip.source),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
@@ -374,6 +426,11 @@ private fun TripDialog(
         title = { Text("${Calc.fmtDate(trip.startTime)}, ${Calc.fmtMiles(trip.distanceMeters)}") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "${Calc.fmtTime(trip.startTime)} to ${Calc.fmtTime(trip.endTime)}. Source: ${Source.label(trip.source)}",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(8.dp))
                 Text("Category", fontWeight = FontWeight.Bold)
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -607,6 +664,8 @@ fun SettingsScreen(vm: AppViewModel) {
             AutoDetectSection()
             Spacer(Modifier.height(8.dp))
             DetectionLogSection()
+            Spacer(Modifier.height(16.dp))
+            ImportSection(vm)
             Spacer(Modifier.height(16.dp))
         }
         item { Text("Categories", style = MaterialTheme.typography.titleLarge) }
@@ -931,6 +990,296 @@ private fun shareLog(context: Context) {
     } catch (e: Exception) {
         Toast.makeText(context, "Could not share the log.", Toast.LENGTH_LONG).show()
     }
+}
+
+// ---------------------------------------------------------------------------
+// Update reminder (offline: it only knows how old this copy is)
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun UpdateBanner(monthsOld: Long, onCheck: () -> Unit, onLater: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+            Text("A newer version of OpenMiles may be available.", fontWeight = FontWeight.Bold)
+            Text(
+                "This copy is about $monthsOld months old. Checking opens the download page in your browser.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onCheck) { Text("Check") }
+                TextButton(onClick = onLater) { Text("Not now") }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Add a drive by hand
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+private fun AddDriveDialog(
+    categories: List<Category>,
+    onAdd: (startMs: Long, endMs: Long, miles: Double, categoryId: Long?, notes: String) -> Unit,
+    onClose: () -> Unit
+) {
+    var day by rememberSaveable { mutableLongStateOf(LocalDate.now().toEpochDay()) }
+    var startMin by rememberSaveable { mutableIntStateOf(9 * 60) }
+    var endMin by rememberSaveable { mutableIntStateOf(9 * 60 + 30) }
+    var milesText by rememberSaveable { mutableStateOf("") }
+    var categoryId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var picking by rememberSaveable { mutableStateOf("") } // "", "date", "start", "end"
+    var error by remember { mutableStateOf<String?>(null) }
+
+    fun clock(minutes: Int): String {
+        val h = minutes / 60
+        val m = minutes % 60
+        val h12 = if (h % 12 == 0) 12 else h % 12
+        return String.format(java.util.Locale.US, "%d:%02d %s", h12, m, if (h < 12) "AM" else "PM")
+    }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Add a drive by hand") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "For drives the app missed. It will be marked \"Added by hand\" in reports.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = { picking = "date" }, modifier = Modifier.fillMaxWidth()) {
+                    Text("Date: ${Calc.fmtDay(LocalDate.ofEpochDay(day))}")
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { picking = "start" }, modifier = Modifier.weight(1f)) {
+                        Text("Start ${clock(startMin)}")
+                    }
+                    OutlinedButton(onClick = { picking = "end" }, modifier = Modifier.weight(1f)) {
+                        Text("End ${clock(endMin)}")
+                    }
+                }
+                OutlinedTextField(
+                    value = milesText,
+                    onValueChange = { milesText = it.filter { c -> c.isDigit() || c == '.' }.take(7) },
+                    label = { Text("Miles") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("Category (optional)", fontWeight = FontWeight.Bold)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    categories.forEach { cat ->
+                        FilterChip(
+                            selected = categoryId == cat.id,
+                            onClick = { categoryId = if (categoryId == cat.id) null else cat.id },
+                            label = { Text(cat.name) }
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it.take(AppViewModel.MAX_NOTES) },
+                    label = { Text("Notes (optional)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                error?.let {
+                    Spacer(Modifier.height(4.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val miles = milesText.toDoubleOrNull()
+                val date = LocalDate.ofEpochDay(day)
+                val zone = ZoneId.systemDefault()
+                val start = date.atStartOfDay(zone).plusMinutes(startMin.toLong()).toInstant().toEpochMilli()
+                val end = date.atStartOfDay(zone).plusMinutes(endMin.toLong()).toInstant().toEpochMilli()
+                error = when {
+                    !Validation.isValidManualMiles(miles) ->
+                        "Enter the miles, more than 0 and up to ${Validation.MAX_MANUAL_MILES.toInt()}."
+                    end <= start -> "The end time must be after the start time."
+                    date.isAfter(LocalDate.now()) -> "The date can't be in the future."
+                    else -> null
+                }
+                if (error == null && miles != null) onAdd(start, end, miles, categoryId, notes)
+            }) { Text("Add drive") }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("Cancel") } }
+    )
+
+    when (picking) {
+        "date" -> {
+            val state = rememberDatePickerState(
+                initialSelectedDateMillis = LocalDate.ofEpochDay(day)
+                    .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+            )
+            DatePickerDialog(
+                onDismissRequest = { picking = "" },
+                confirmButton = {
+                    TextButton(onClick = {
+                        state.selectedDateMillis?.let {
+                            day = Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate().toEpochDay()
+                        }
+                        picking = ""
+                    }) { Text("OK") }
+                },
+                dismissButton = { TextButton(onClick = { picking = "" }) { Text("Cancel") } }
+            ) { DatePicker(state = state) }
+        }
+        "start", "end" -> {
+            val current = if (picking == "start") startMin else endMin
+            val state = rememberTimePickerState(
+                initialHour = current / 60,
+                initialMinute = current % 60,
+                is24Hour = false
+            )
+            AlertDialog(
+                onDismissRequest = { picking = "" },
+                title = { Text(if (picking == "start") "Start time" else "End time") },
+                text = { TimeInput(state = state) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val value = state.hour * 60 + state.minute
+                        if (picking == "start") startMin = value else endMin = value
+                        picking = ""
+                    }) { Text("OK") }
+                },
+                dismissButton = { TextButton(onClick = { picking = "" }) { Text("Cancel") } }
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Import from Google Maps Timeline
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun ImportSection(vm: AppViewModel) {
+    val state by vm.importState.collectAsStateWithLifecycle()
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.readTimeline(uri)
+    }
+    val busy = state is AppViewModel.ImportState.Reading || state is AppViewModel.ImportState.Saving
+
+    Text("Import drives", style = MaterialTheme.typography.titleLarge)
+    Text(
+        "Bring in past drives from Google Maps Timeline. First, on your phone open Settings, Location, " +
+            "Location services, Timeline, and tap Export Timeline data. Then choose that file here. " +
+            "The file is read on this phone only, and only car drives are kept.",
+        style = MaterialTheme.typography.bodySmall
+    )
+    OutlinedButton(
+        onClick = { picker.launch(arrayOf("application/json", "text/plain", "application/octet-stream")) },
+        enabled = !busy
+    ) { Text("Import from Google Timeline") }
+
+    when (val st = state) {
+        AppViewModel.ImportState.Reading -> BusyLine("Reading the file. A large file can take a minute.")
+        AppViewModel.ImportState.Saving -> BusyLine("Saving drives...")
+        is AppViewModel.ImportState.Done -> Text(
+            "Added ${st.added} drives. They are on the Drives tab, marked \"Not classified yet\".",
+            color = MaterialTheme.colorScheme.primary
+        )
+        is AppViewModel.ImportState.Failed -> Text(st.message, color = MaterialTheme.colorScheme.error)
+        is AppViewModel.ImportState.Ready -> ImportPreviewDialog(
+            ready = st,
+            onImport = { vm.importDrives(it) },
+            onCancel = { vm.clearImport() }
+        )
+        else -> Unit
+    }
+}
+
+@Composable
+private fun BusyLine(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        CircularProgressIndicator(modifier = Modifier.height(20.dp).width(20.dp), strokeWidth = 2.dp)
+        Text(text, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ImportPreviewDialog(
+    ready: AppViewModel.ImportState.Ready,
+    onImport: (List<ImportedDrive>) -> Unit,
+    onCancel: () -> Unit
+) {
+    val drives = ready.parsed.drives
+    val byYear = remember(drives) { drives.groupingBy { it.year() }.eachCount().toSortedMap() }
+    var years by remember(drives) { mutableStateOf(byYear.keys.toSet()) }
+    var skipShort by remember { mutableStateOf(true) }
+    val plan = remember(years, skipShort) {
+        TimelineImport.plan(drives, ready.overlapping, skipShort, years)
+    }
+    val miles = plan.toAdd.sumOf { it.meters } / Calc.METERS_PER_MILE
+
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Import from Timeline") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text("Found ${drives.size} drives. Choose which years to bring in:")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    byYear.forEach { (year, count) ->
+                        FilterChip(
+                            selected = year in years,
+                            onClick = { years = if (year in years) years - year else years + year },
+                            label = { Text("$year ($count)") }
+                        )
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = skipShort, onCheckedChange = { skipShort = it })
+                    Text("Skip drives under a quarter mile", style = MaterialTheme.typography.bodyMedium)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    String.format(java.util.Locale.US, "Will add %d drives, %.1f miles.", plan.toAdd.size, miles),
+                    fontWeight = FontWeight.Bold
+                )
+                if (plan.skippedOverlap > 0) {
+                    Text("Skipped, already in OpenMiles: ${plan.skippedOverlap}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (skipShort && plan.skippedShort > 0) {
+                    Text("Skipped, under a quarter mile: ${plan.skippedShort}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (ready.parsed.otherTrips > 0) {
+                    Text(
+                        "Walks, bike rides and other trips left out: ${ready.parsed.otherTrips}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                if (ready.parsed.rejected > 0) {
+                    Text(
+                        "Incomplete entries left out: ${ready.parsed.rejected}",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Imported drives start as \"Not classified yet\" and are marked \"Google Timeline\" " +
+                        "in reports. Miles are Google's estimate along the roads.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onImport(plan.toAdd) }, enabled = plan.toAdd.isNotEmpty()) {
+                Text("Add ${plan.toAdd.size} drives")
+            }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } }
+    )
 }
 
 private fun appVersion(context: Context): String = try {

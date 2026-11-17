@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.openmiles.app.domain.UpdateReminder
 import org.openmiles.app.domain.Validation
 import java.time.LocalDate
 
@@ -48,5 +49,30 @@ class ValidationTest {
         assertFalse(Validation.isSafeWebLink("https:///path"))
         assertFalse(Validation.isSafeWebLink("https://paypal.me@evil.example/"))
         assertFalse(Validation.isSafeWebLink("https://bad host/"))
+    }
+
+    @Test
+    fun manualMilesMustBeSensible() {
+        assertTrue(Validation.isValidManualMiles(0.1))
+        assertTrue(Validation.isValidManualMiles(1000.0))
+        assertFalse(Validation.isValidManualMiles(0.0))
+        assertFalse(Validation.isValidManualMiles(-3.0))
+        assertFalse(Validation.isValidManualMiles(1000.5))
+        assertFalse(Validation.isValidManualMiles(null))
+        assertFalse(Validation.isValidManualMiles(Double.NaN))
+    }
+
+    @Test
+    fun updateReminderIsGentle() {
+        val day = UpdateReminder.DAY_MS
+        val built = 1_000_000_000_000L
+        assertFalse(UpdateReminder.shouldShow(built + 59 * day, built, 0))
+        assertTrue(UpdateReminder.shouldShow(built + 60 * day, built, 0))
+        // Snoozed: quiet until the snooze ends.
+        assertFalse(UpdateReminder.shouldShow(built + 70 * day, built, built + 90 * day))
+        assertTrue(UpdateReminder.shouldShow(built + 90 * day, built, built + 90 * day))
+        // A missing build time never shows it.
+        assertFalse(UpdateReminder.shouldShow(built, 0, 0))
+        assertEquals(2, UpdateReminder.monthsOld(built + 61 * day, built))
     }
 }

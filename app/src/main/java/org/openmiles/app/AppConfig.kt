@@ -12,4 +12,7 @@ object AppConfig {
 
     /** Link to the source code, shown in Settings. Leave empty to hide. */
     const val SOURCE_URL = "https://github.com/sloantech/openmiles"
+
+    /** The page with the newest version to download. Opened in the browser, never by the app. */
+    const val RELEASES_URL = "https://github.com/sloantech/OpenMiles/releases/latest"
 }

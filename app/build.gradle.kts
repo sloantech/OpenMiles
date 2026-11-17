@@ -13,8 +13,11 @@ android {
         applicationId = "org.openmiles.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
+        // When this copy was built. The app uses it to suggest checking for a newer version
+        // without ever going online.
+        buildConfigField("long", "BUILD_TIME_MS", "${System.currentTimeMillis()}L")
     }
 
     // The permanent signing key is never stored in the code. The build reads it from
@@ -66,6 +69,11 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
 }
 
@@ -87,5 +95,11 @@ dependencies {
 
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
+    // Reads large Google Timeline files piece by piece, so the phone never runs out of memory.
+    implementation("com.google.code.gson:gson:2.11.0")
+
     testImplementation("junit:junit:4.13.2")
+    // Runs the real database on the build server, so upgrades are tested before they reach a phone.
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
 }
