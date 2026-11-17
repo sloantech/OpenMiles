@@ -3,8 +3,6 @@
 A free, open source mileage tracker for Android. No ads, no account, no subscription.
 Your drives stay on your phone.
 
-[![Latest version](https://img.shields.io/github/v/release/sloantech/OpenMiles?label=latest%20version)](https://github.com/sloantech/OpenMiles/releases/latest)
-
 **Status: beta.** Automatic tests check the mileage math, IRS rate dates, CSV export, GPS
 filtering and drive detection rules on every build. Real-world driving tests are in progress,
 so compare your first weeks of drives against another tracker or your odometer.
