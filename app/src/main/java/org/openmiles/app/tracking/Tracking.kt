@@ -425,8 +425,10 @@ class TrackingService : Service() {
                 val id = savedId
                 if (id != null && finished != null) tellAboutSavedDrive(appContext, id, finished.meters, savedCategory)
             } finally {
-                // Always release the service, even if saving failed.
-                stopSelf()
+                // Always release the service, even if saving failed. Saying "Drive saved" can take
+                // a few seconds, and a new drive may have started meanwhile (the car reconnected).
+                // Then the service is busy again and must keep running.
+                if (!TrackingState.live.value.active) stopSelf()
             }
         }
     }
