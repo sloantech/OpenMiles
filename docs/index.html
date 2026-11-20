@@ -121,7 +121,7 @@
           <a class="btn btn-amber" href="https://github.com/sloantech/OpenMiles/releases/latest">Download for Android</a>
           <a class="btn btn-ghost" href="https://github.com/sloantech/OpenMiles">See the source code</a>
         </div>
-        <p class="note">Free forever under the GPL-3.0 license. Currently in beta, <span data-app-version>Version 0.12.0</span>.</p>
+        <p class="note">Free forever under the GPL-3.0 license. Currently in beta, <span data-app-version>Version 0.13.0</span>.</p>
       </div>
       <div>
         <div class="phone" role="img" aria-label="Illustration of the OpenMiles Drives screen with a monthly summary, a Start drive button and three drives.">
@@ -159,6 +159,7 @@
           <tr><th scope="row">Source code</th><td class="us">Open. Anyone can check what it does</td><td>Usually closed</td></tr>
           <tr><th scope="row">Backups</th><td class="us">One file you save where you choose</td><td>The company's cloud</td></tr>
           <tr><th scope="row">Automatic drive detection</th><td class="us">Yes, optional and off by default</td><td>Yes, usually always on</td></tr>
+          <tr><th scope="row">Map of each drive</th><td class="us">Yes, drawn on your phone. One tap shows streets in Google Maps</td><td>Yes, with street maps loaded from the internet</td></tr>
           <tr><th scope="row">IRS mileage log</th><td class="us">PDF and spreadsheet, included</td><td>Often included, sometimes only on paid plans</td></tr>
         </tbody>
       </table>
@@ -201,6 +202,7 @@
       <div class="card"><h3>Rules that do the work</h3><p>Name places like Home or Office and set work hours, and new drives get the right category on their own.</p></div>
       <div class="card"><h3>IRS rates by date</h3><p>Mileage value uses the IRS standard rates in effect on each drive's date, including mid-year changes.</p></div>
       <div class="card"><h3>Reports you can hand in</h3><p>Any date range, as a printable PDF mileage log or a spreadsheet. Parking, tolls and yearly odometer readings included.</p></div>
+      <div class="card"><h3>See every drive on a map</h3><p>Tap a drive to see the route it took, drawn on your phone with no internet. Want streets? One tap opens it in Google Maps.</p></div>
       <div class="card"><h3>Fix anything</h3><p>Edit, split or merge drives, or add one by hand. Changed drives are clearly marked, so your log stays honest.</p></div>
       <div class="card"><h3>Bring your history</h3><p>Import past drives from your Google Maps Timeline, or the CSV report from your old mileage app. Read only on your phone.</p></div>
       <div class="card"><h3>Your data, your backup</h3><p>Save a backup file to wherever you like and restore it on a new phone. Restoring never deletes anything.</p></div>
@@ -231,7 +233,7 @@
       <li>The app has no internet permission, so it cannot send your drives anywhere. Every build checks this and fails if it ever changes.</li>
       <li>Location is used only while a drive is recording, and a notification always shows when it is.</li>
       <li>Background location is only requested if you turn on automatic detection.</li>
-      <li>Nothing leaves your phone unless you tap Export, Share or Backup, and only to the place you pick.</li>
+      <li>Nothing leaves your phone unless you tap Export, Share, Backup or Open in Maps, and only to the place you pick.</li>
       <li>Every build runs security checks and scans every library for known vulnerabilities.</li>
     </ul>
   </div>
@@ -243,7 +245,7 @@
     <h2>Questions</h2>
     <p class="intro">The honest answers, including the limits.</p>
     <details><summary>Is it really free? What's the catch?</summary><p>It's free, with no paid tier, ads or data sales. It was built by one developer who was tired of paying a monthly fee for mileage tracking. If it helps you, you can leave a donation, but you never have to.</p></details>
-    <details><summary>Is my data safe?</summary><p>The app has no internet permission, so it cannot send your drives anywhere, and every build checks that. Drives stay in the app's private storage on your phone. Nothing leaves unless you export or back it up yourself. See the <a href="privacy.html">privacy policy</a>.</p></details>
+    <details><summary>Is my data safe?</summary><p>The app has no internet permission, so it cannot send your drives anywhere, and every build checks that. Drives stay in the app's private storage on your phone. Nothing leaves unless you export, back up, or tap Open in Maps yourself. See the <a href="privacy.html">privacy policy</a>.</p></details>
     <details><summary>Is it accurate enough for taxes?</summary><p>It records the date, times, miles, category and your notes for each drive, and the PDF log adds totals, IRS-rate values and yearly odometer readings. GPS can still miss or misjudge distance, so compare your first weeks with your odometer. OpenMiles is not tax advice; check with a tax professional.</p></details>
     <details><summary>Will it drain my battery?</summary><p>With manual Start and Stop, GPS only runs while you're driving. Automatic detection uses Android's low-power activity sensor while you're not driving, and GPS only once a drive starts. Expect some extra use with it on.</p></details>
     <details><summary>What if I lose or replace my phone?</summary><p>Make a backup in Settings and save it somewhere you choose, like Google Drive or email. Restore it on the new phone. Restoring only adds what's missing and never deletes anything.</p></details>

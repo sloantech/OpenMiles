@@ -585,7 +585,8 @@ fun DrivesScreen(vm: AppViewModel) {
                 vm.deleteTrip(editing.id)
                 editingId = null
             },
-            onClose = { editingId = null }
+            onClose = { editingId = null },
+            loadRoute = { vm.routeOf(editing.id) }
         )
     }
 }
@@ -880,7 +881,8 @@ private fun TripDialog(
     onPick: (Long?) -> Unit,
     onSaveNotes: (String) -> Unit,
     onDelete: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    loadRoute: suspend () -> String
 ) {
     var notes by remember(trip.id) { mutableStateOf(trip.notes) }
     var parkingText by remember(trip.id) { mutableStateOf(Validation.centsText(trip.parkingCents)) }
@@ -911,6 +913,7 @@ private fun TripDialog(
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))
+                DriveMapSection(tripId = trip.id, source = trip.source, loadRoute = loadRoute)
                 Text("Category", fontWeight = FontWeight.Bold)
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),

@@ -267,6 +267,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Editing, splitting and merging drives -------------------------------------------------
 
+    /** The saved GPS route of one drive, for its map. Empty when it has none. */
+    suspend fun routeOf(id: Long): String = db.tripDao().get(id)?.route ?: ""
+
     /** Changes a drive's times and miles. The drive is marked as edited in reports. */
     fun editTrip(id: Long, startMs: Long, endMs: Long, miles: Double) {
         if (endMs <= startMs || endMs - startMs > MAX_DRIVE_MS || !Validation.isValidManualMiles(miles)) return

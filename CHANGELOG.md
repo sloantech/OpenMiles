@@ -3,6 +3,19 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.13.0] - 2026-11-20
+
+### Added
+- A map of each drive. Tap a drive to see the route it took, with a green dot where it started
+  and a yellow dot where it ended. The map is drawn on your phone from the drive's saved GPS
+  points, so OpenMiles still never goes online. There are no street names on it for the same
+  reason.
+- "Open in Maps" under the map shows the drive on real streets in Google Maps. It only happens
+  when you tap it. Google Maps goes online to do that. OpenMiles does not.
+- Drives imported from Google Timeline show a dashed straight line, because Timeline only saves
+  where they started and ended. Drives added by hand or imported from MileIQ have no route,
+  and the app says so.
+
 ## [0.12.0] - 2026-11-17
 
 ### Added

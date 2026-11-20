@@ -16,6 +16,8 @@ so compare your first weeks of drives against another tracker or your odometer.
 - Start and stop a drive yourself, or turn on **automatic drive detection** (optional, off by default).
   You can pause it for an hour, a day, a week, or until you turn it back on.
 - Records the route with GPS and adds up the miles. A drive in progress is saved every 30 seconds.
+- Tap a drive to see a map of its route, drawn on your phone with no internet. "Open in Maps"
+  shows it on real streets in Google Maps if you want.
 - Swipe a drive right for Business or left for Personal.
 - Tap a drive to pick any category (Business, Personal, Medical, Charity, or your own) and add notes.
 - Mileage value uses IRS rates by date (2025 and 2026 rates are built in, including the July 2026 change).
@@ -38,7 +40,7 @@ so compare your first weeks of drives against another tracker or your odometer.
 
 ## What comes next
 
-- A map view (it needs care, because map pictures normally come from the internet)
+- More features from the competitor review, one at a time.
 
 ## How to install it on your phone
 
@@ -74,6 +76,8 @@ If you would rather be told about updates automatically, the free open source ap
 - Exports (PDF, spreadsheet, backup, detection log) leave the phone only when you tap them,
   and only to the app or place you pick.
 - A Google Timeline file or MileIQ report you import is read on the phone. Only the drives are kept.
+- The drive map is drawn on the phone. Only if you tap "Open in Maps" does the drive's start,
+  end and a few points along the way go to Google Maps, which then goes online.
 - Every build also runs security checks: Android's security lint rules, and a scan of every
   library against a public database of known vulnerabilities.
 
@@ -89,8 +93,10 @@ If you would rather be told about updates automatically, the free open source ap
 - A drive in progress is saved every 30 seconds, so if Android closes the app, at most the last
   30 seconds are lost.
 - Drives shorter than about 50 meters (a quarter mile for automatic drives) are not kept.
-- No map view yet, and places are named by you, not looked up, because street addresses would
-  need the internet.
+- The drive map shows the route line only, with no streets, and places are named by you, not
+  looked up, because street maps and addresses would need the internet. "Open in Maps" hands the
+  route to Google Maps when you want streets. Maps picks its own roads between a few points of
+  your drive, so its miles can differ a little.
 - Android only for now.
 
 ## Disclaimer
