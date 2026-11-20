@@ -35,8 +35,10 @@ import org.openmiles.app.data.AppDatabase
 import org.openmiles.app.data.Rules
 import org.openmiles.app.data.Trip
 import org.openmiles.app.domain.AutoTripMonitor
+import org.openmiles.app.domain.CarLink
 import org.openmiles.app.domain.Draft
 import org.openmiles.app.domain.Geo
+import org.openmiles.app.domain.Speech
 import org.openmiles.app.domain.TripRecorder
 import java.util.Locale
 
@@ -70,6 +72,10 @@ object TrackingState {
     private var monitor: AutoTripMonitor? = null
     private var seed: TripRecorder.Fix? = null
     private var lastGoodFixMs: Long = 0L
+    /** When the chosen car's Bluetooth disconnected during this drive, or null. */
+    private var carOffAtMs: Long? = null
+    /** True once "Drive started" has been said (or did not need saying) for this drive. */
+    private var startAnnounced = false
 
     /** Farthest the parking spot may be from the first GPS fix and still count as the start. */
     private const val SEED_MAX_M = 2_000.0
@@ -81,7 +87,35 @@ object TrackingState {
         monitor = if (auto) AutoTripMonitor(now) else null
         seed = if (auto) parkedAt else null
         lastGoodFixMs = now
+        carOffAtMs = null
+        startAnnounced = false
         _live.value = LiveTrip(active = true, startTime = now, auto = auto)
+    }
+
+    /** The chosen car's Bluetooth disconnected. Only automatic drives end because of it. */
+    @Synchronized
+    fun onCarDisconnected(now: Long) {
+        if (isAutoActive() && carOffAtMs == null) carOffAtMs = now
+    }
+
+    /** The chosen car's Bluetooth is back, so a short drop does not end the drive. */
+    @Synchronized
+    fun onCarConnected() {
+        carOffAtMs = null
+    }
+
+    /**
+     * True once per drive, when it is time to say "Drive started". A drive you start yourself is
+     * announced at once. An automatic one waits until it has gone faster than walking speed, so a
+     * walk past the parking circle is never announced as a drive.
+     */
+    @Synchronized
+    fun takeStartAnnouncement(): Boolean {
+        val state = _live.value
+        if (!state.active || startAnnounced) return false
+        val confirmed = !state.auto || (monitor?.maxSpeedMps ?: 0.0) >= AutoTripMonitor.DRIVE_SPEED_MPS
+        if (confirmed) startAnnounced = true
+        return confirmed
     }
 
     @Synchronized
@@ -127,8 +161,14 @@ object TrackingState {
 
     /** For automatic drives only: should the drive end now? */
     @Synchronized
-    fun checkAuto(now: Long): AutoTripMonitor.Decision? =
-        if (_live.value.active) monitor?.check(now) else null
+    fun checkAuto(now: Long): AutoTripMonitor.Decision? {
+        if (!_live.value.active) return null
+        val off = carOffAtMs
+        if (monitor != null && CarLink.shouldEnd(off, now) && off != null) {
+            return AutoTripMonitor.Decision.CarOff(off)
+        }
+        return monitor?.check(now)
+    }
 
     /** The drive so far, to save in case Android closes the app. */
     @Synchronized
@@ -174,6 +214,7 @@ object TrackingState {
         recorder.reset()
         monitor = null
         seed = null
+        carOffAtMs = null
         _live.value = LiveTrip()
         return if (draft != null && draft.worthKeeping()) {
             FinishedTrip(draft.startMs, draft.endMs, draft.meters, draft.route, parkedAt)
@@ -245,6 +286,7 @@ class TrackingService : Service() {
             val now = System.currentTimeMillis()
             TrackingState.begin(now, auto, if (auto) AutoDetect.parkedAt(this) else null)
             DiagLog.add(this, if (auto) "Recording started automatically" else "Recording started (you tapped Start)")
+            announceStartIfReady()
             // No distance filter: fixes keep coming while parked, which is how a real stop is
             // told apart from a lost signal. Tiny moves are still ignored by TripRecorder.
             val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5_000L).build()
@@ -273,6 +315,7 @@ class TrackingService : Service() {
                 val now = System.currentTimeMillis()
                 val draft = TrackingState.snapshot(now) ?: break
                 DraftStore.write(appContext, draft)
+                announceStartIfReady()
                 if (TrackingState.updateGpsStatus(now)) {
                     DiagLog.add(
                         appContext,
@@ -295,6 +338,12 @@ class TrackingService : Service() {
                         }
                         break
                     }
+                    is AutoTripMonitor.Decision.CarOff -> {
+                        withContext(Dispatchers.Main) {
+                            stopAndSave(decision.endMs, userStopped = false, reason = "car Bluetooth disconnected")
+                        }
+                        break
+                    }
                     AutoTripMonitor.Decision.NotADrive -> {
                         withContext(Dispatchers.Main) {
                             stopAndSave(endMs = null, userStopped = false, reason = "never faster than 15 mph")
@@ -305,6 +354,14 @@ class TrackingService : Service() {
                 }
             }
         }
+    }
+
+    /** Says "Drive started" once, if spoken updates are on. */
+    private fun announceStartIfReady() {
+        if (!VoiceSettings.speakOn(this)) return
+        if (!TrackingState.takeStartAnnouncement()) return
+        val appContext = applicationContext
+        scope.launch { Speaker.say(appContext, Speech.started()) }
     }
 
     private fun stopAndSave(
@@ -336,6 +393,8 @@ class TrackingService : Service() {
         val appContext = applicationContext
         val wasAuto = before?.auto == true && !userStopped
         scope.launch {
+            var savedId: Long? = null
+            var savedCategory: Long? = null
             try {
                 if (finished != null) {
                     val db = AppDatabase.get(appContext)
@@ -345,7 +404,8 @@ class TrackingService : Service() {
                         DiagLog.add(appContext, "Drive not kept: it started and ended in an ignored place")
                     } else {
                         val categoryId = rules.categoryForRoute(finished.route, finished.startTime)
-                        db.tripDao().insert(
+                        savedCategory = categoryId
+                        savedId = db.tripDao().insert(
                             Trip(
                                 startTime = finished.startTime,
                                 endTime = finished.endTime,
@@ -362,10 +422,29 @@ class TrackingService : Service() {
                 // If GPS was lost, the old parking spot is no longer trustworthy.
                 if (gpsLost) AutoDetect.forgetParking(appContext)
                 DraftStore.clear(appContext)
+                val id = savedId
+                if (id != null && finished != null) tellAboutSavedDrive(appContext, id, finished.meters, savedCategory)
             } finally {
                 // Always release the service, even if saving failed.
                 stopSelf()
             }
+        }
+    }
+
+    /** The optional "Business or personal?" notification and the spoken "Drive saved". */
+    private suspend fun tellAboutSavedDrive(appContext: Context, tripId: Long, meters: Double, categoryId: Long?) {
+        try {
+            val ask = categoryId == null && VoiceSettings.askOn(appContext)
+            if (ask) DriveEndNotice.show(appContext, tripId, meters)
+            if (VoiceSettings.speakOn(appContext)) {
+                val name = categoryId?.let { id ->
+                    AppDatabase.get(appContext).categoryDao().all().firstOrNull { it.id == id }?.name
+                }
+                Speaker.say(appContext, Speech.saved(meters, name, ask))
+            }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            // Talking about a drive must never stop it from being saved. It is already saved.
         }
     }
 

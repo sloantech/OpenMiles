@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Which car Bluetooth receiver is active. Android 12 changed the Bluetooth permission. -->
+    <bool name="car_bt_legacy">true</bool>
+    <bool name="car_bt_modern">false</bool>
+</resources>

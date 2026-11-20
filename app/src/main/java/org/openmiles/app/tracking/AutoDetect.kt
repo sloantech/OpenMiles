@@ -212,6 +212,19 @@ object AutoDetect {
         }
     }
 
+    /** Starts an automatic drive unless one is already recording. Used by every start signal. */
+    fun startIfIdle(context: Context) {
+        if (TrackingState.live.value.active) {
+            DiagLog.add(context, "Already recording, nothing to start")
+            return
+        }
+        if (!hasAllPermissions(context)) {
+            DiagLog.add(context, "Could not start: missing ${missingPermissions(context).joinToString(", ")}")
+            return
+        }
+        TrackingService.autoStart(context)
+    }
+
     private fun pendingIntent(context: Context, action: String): PendingIntent {
         // Google Play services adds the event details, so this one has to be mutable.
         // The intent names our own receiver, so no other app can receive it.
@@ -277,20 +290,7 @@ class DetectionReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun startIfIdle(context: Context) {
-        if (TrackingState.live.value.active) {
-            DiagLog.add(context, "Already recording, nothing to start")
-            return
-        }
-        if (!AutoDetect.hasAllPermissions(context)) {
-            DiagLog.add(
-                context,
-                "Could not start: missing ${AutoDetect.missingPermissions(context).joinToString(", ")}"
-            )
-            return
-        }
-        TrackingService.autoStart(context)
-    }
+    private fun startIfIdle(context: Context) = AutoDetect.startIfIdle(context)
 
     private companion object {
         const val MAX_SIGNAL_AGE_MS = 10 * 60_000L

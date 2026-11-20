@@ -20,6 +20,16 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!--
+        Only used if the person turns on "Start when my car's Bluetooth connects". The app reads
+        the list of devices already paired with the phone so the person can pick their car. It
+        never scans for devices and never connects to anything.
+    -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!--
         Privacy promise: OpenMiles never connects to the internet. This line removes the
         INTERNET permission even if a library we use asks for it. The build also checks it.
     -->
@@ -51,6 +61,37 @@
         <!-- Drive signals from Google Play services. Other apps cannot reach it. -->
         <receiver
             android:name=".tracking.DetectionReceiver"
+            android:exported="false" />
+
+        <!--
+            Car Bluetooth connect and disconnect signals. Only the phone's Bluetooth system holds
+            the permission named here, so other apps cannot send fake signals. One receiver is
+            active on Android 12 and newer, the other on older versions.
+        -->
+        <receiver
+            android:name=".tracking.CarBluetoothReceiver"
+            android:enabled="@bool/car_bt_modern"
+            android:exported="true"
+            android:permission="android.permission.BLUETOOTH_CONNECT">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".tracking.CarBluetoothReceiverLegacy"
+            android:enabled="@bool/car_bt_legacy"
+            android:exported="true"
+            android:permission="android.permission.BLUETOOTH">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- The Business and Personal buttons on the drive-ended notification. Other apps cannot reach it. -->
+        <receiver
+            android:name=".tracking.ClassifyActionReceiver"
             android:exported="false" />
 
         <!-- The weekly "drives to classify" reminder. Other apps cannot reach it. -->

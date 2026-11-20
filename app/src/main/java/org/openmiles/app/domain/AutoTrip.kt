@@ -16,6 +16,8 @@ class AutoTripMonitor(private val startMs: Long) {
         object NotADrive : Decision()
         data class Parked(val endMs: Long) : Decision()
         data class GpsLost(val endMs: Long) : Decision()
+        /** The chosen car's Bluetooth disconnected and stayed off. Ends at the moment it disconnected. */
+        data class CarOff(val endMs: Long) : Decision()
     }
 
     private var anchorLat: Double? = null

@@ -1355,6 +1355,8 @@ fun SettingsScreen(vm: AppViewModel) {
         }
         item {
             AutoDetectSection()
+            Spacer(Modifier.height(16.dp))
+            VoiceSection()
             Spacer(Modifier.height(8.dp))
             DetectionLogSection()
             Spacer(Modifier.height(16.dp))
@@ -1969,6 +1971,7 @@ private fun AutoDetectSection() {
         } else {
             OutlinedButton(onClick = { choosingPause = true }) { Text("Pause automatic detection") }
         }
+        CarBluetoothSection()
     }
     if (choosingPause) {
         AlertDialog(
