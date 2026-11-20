@@ -15,6 +15,20 @@ Each version's installable file is on the [Releases page](https://github.com/slo
 - Drives imported from Google Timeline show a dashed straight line, because Timeline only saves
   where they started and ended. Drives added by hand or imported from MileIQ have no route,
   and the app says so.
+- Start drives with your car's Bluetooth (Settings, Automatic drive detection, Car Bluetooth).
+  Pick your car from the devices already paired with your phone. A drive starts the moment your
+  phone connects and ends a minute after it disconnects, so a short Bluetooth drop doesn't split
+  a drive. Motion detection still works as a backup, for example in a rental. Optional and off
+  by default. It needs "Nearby devices" permission and Unrestricted battery use.
+- Spoken updates (Settings, Spoken updates): hear "Drive started" and "Drive saved, 12.4 miles".
+  It uses your phone's own voice, and only one that works offline. Music turns down while it
+  talks. An automatic drive is only announced once it goes faster than walking speed.
+  Optional and off by default.
+- "Ask business or personal when a drive ends": a notification with Business and Personal
+  buttons when a drive is saved without a category. One tap classifies it, without opening the
+  app. Optional and off by default.
+- The detection log shows car Bluetooth connects and disconnects, and why the voice stayed
+  quiet if it did.
 
 ## [0.12.0] - 2026-11-17
 

@@ -15,6 +15,12 @@ so compare your first weeks of drives against another tracker or your odometer.
 
 - Start and stop a drive yourself, or turn on **automatic drive detection** (optional, off by default).
   You can pause it for an hour, a day, a week, or until you turn it back on.
+- **Car Bluetooth start** (optional): a drive starts the moment your phone connects to your car
+  and ends a minute after it disconnects. Motion detection still works as a backup.
+- **Spoken updates** (optional): hear "Drive started" and "Drive saved, 12.4 miles", using your
+  phone's own offline voice.
+- **Business or personal?** (optional): a notification with one-tap Business and Personal
+  buttons when a drive ends without a category.
 - Records the route with GPS and adds up the miles. A drive in progress is saved every 30 seconds.
 - Tap a drive to see a map of its route, drawn on your phone with no internet. "Open in Maps"
   shows it on real streets in Google Maps if you want.
@@ -38,9 +44,23 @@ so compare your first weeks of drives against another tracker or your odometer.
 - A private detection log in Settings shows why each drive started, ended, or was not kept.
 - The version number is shown in Settings, under About.
 
-## What comes next
+## Roadmap
 
-- More features from the competitor review, one at a time.
+Done in 0.13.0: drive maps, car Bluetooth start, spoken updates, and one-tap classify buttons.
+
+Next, one at a time:
+
+- **Answer "Business or personal?" out loud.** Android blocks the microphone for apps running in
+  the background, so a spoken answer can only work while OpenMiles is open on screen. Being
+  checked before it is built.
+- A check of your log before you export it (overlapping drives, business drives with no purpose,
+  odometer gaps).
+- One-tap return trip.
+- More than one vehicle, each with its own log.
+- Fuel log with miles per gallon.
+- A Commute category, kept out of business totals.
+- Route export as a GPX file.
+- Kilometers and other countries' mileage rates.
 
 ## How to install it on your phone
 
@@ -78,6 +98,12 @@ If you would rather be told about updates automatically, the free open source ap
 - A Google Timeline file or MileIQ report you import is read on the phone. Only the drives are kept.
 - The drive map is drawn on the phone. Only if you tap "Open in Maps" does the drive's start,
   end and a few points along the way go to Google Maps, which then goes online.
+- **Car Bluetooth start is optional and off by default.** When you turn it on, the app asks for
+  "Nearby devices" so it can show the devices already paired with your phone. It never scans
+  for devices and never connects to anything. Only the car you pick counts, and only the phone's
+  own Bluetooth system can send the connect signal the app listens for.
+- **Spoken updates** use the phone's text-to-speech, and only a voice installed on the phone.
+  If no offline voice is installed, the app stays quiet instead of using an online one.
 - Every build also runs security checks: Android's security lint rules, and a scan of every
   library against a public database of known vulnerabilities.
 
@@ -97,6 +123,8 @@ If you would rather be told about updates automatically, the free open source ap
   looked up, because street maps and addresses would need the internet. "Open in Maps" hands the
   route to Google Maps when you want streets. Maps picks its own roads between a few points of
   your drive, so its miles can differ a little.
+- Car Bluetooth start needs OpenMiles' battery use set to Unrestricted. Otherwise Android won't
+  let a Bluetooth signal start recording while the app is closed, and motion detection takes over.
 - Android only for now.
 
 ## Disclaimer

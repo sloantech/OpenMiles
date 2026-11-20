@@ -124,10 +124,18 @@ object CarBluetooth {
  * senders holding the Bluetooth connect permission reach it, which is the phone's Bluetooth system.
  */
 class CarBluetoothReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) = CarBluetooth.onSignal(context, intent)
+    override fun onReceive(context: Context, intent: Intent) {
+        val action = intent.action
+        if (action != BluetoothDevice.ACTION_ACL_CONNECTED && action != BluetoothDevice.ACTION_ACL_DISCONNECTED) return
+        CarBluetooth.onSignal(context, intent)
+    }
 }
 
 /** The same, for Android 8 to 11, where the phone's Bluetooth system holds the older permission. */
 class CarBluetoothReceiverLegacy : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) = CarBluetooth.onSignal(context, intent)
+    override fun onReceive(context: Context, intent: Intent) {
+        val action = intent.action
+        if (action != BluetoothDevice.ACTION_ACL_CONNECTED && action != BluetoothDevice.ACTION_ACL_DISCONNECTED) return
+        CarBluetooth.onSignal(context, intent)
+    }
 }
