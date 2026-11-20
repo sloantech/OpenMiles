@@ -10,7 +10,7 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OpenMiles">
 <meta property="og:title" content="OpenMiles: free, private mileage tracking for Android">
-<meta property="og:description" content="No subscription, no account, no internet access. Automatic drive detection, IRS rates, PDF and spreadsheet reports. Your drives stay on your phone.">
+<meta property="og:description" content="No subscription, no account, no internet access. Automatic drive detection, car Bluetooth start, drive maps, IRS rates, PDF and spreadsheet reports. Your drives stay on your phone.">
 <meta property="og:url" content="https://sloantech.github.io/OpenMiles/">
 <meta property="og:image" content="https://sloantech.github.io/OpenMiles/social-card.png">
 <meta property="og:image:width" content="1200">
@@ -96,6 +96,21 @@
   details p { margin: 0; padding: 0 20px 18px; color: var(--sub); }
   @media (max-width: 860px) { .calc { grid-template-columns: 1fr; } .steps-grid { grid-template-columns: 1fr 1fr; } }
   @media (max-width: 520px) { .steps-grid { grid-template-columns: 1fr; } }
+  .show-grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 40px; align-items: center; }
+  .show-list { padding-left: 20px; margin: 0; display: grid; gap: 10px; font-size: 16px; color: var(--sub); }
+  .show-list strong { color: var(--text); }
+  .phone.light { background: #fff; box-shadow: 0 18px 44px rgba(15,42,68,.18); }
+  .d-title { font-weight: 800; font-size: 16px; padding: 14px 14px 2px; color: var(--text); }
+  .d-sub { font-size: 10px; color: var(--sub); padding: 0 14px 8px; }
+  .d-label { font-weight: 700; font-size: 11px; padding: 0 14px 4px; color: var(--text); }
+  .d-map { margin: 0 14px; width: calc(100% - 28px); height: auto; border-radius: 10px; background: #EDF1F5; overflow: hidden; display: block; }
+  .d-legend { display: flex; align-items: center; gap: 5px; font-size: 9px; color: var(--sub); padding: 6px 14px 0; flex-wrap: wrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .d-btn { margin: 8px 14px 0; border: 1px solid #C5CED8; border-radius: 99px; text-align: center; font-size: 11px; font-weight: 700; color: var(--navy); padding: 7px; }
+  .d-chips { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 14px 16px; }
+  .d-chip { font-size: 10px; border: 1px solid #C5CED8; border-radius: 8px; padding: 4px 8px; color: var(--sub); }
+  .d-chip.on { background: #E3EEFA; border-color: #E3EEFA; color: #1D5FAF; font-weight: 700; }
+  @media (max-width: 860px) { .show-grid { grid-template-columns: 1fr; } }
   footer { padding: 36px 0 48px; color: var(--sub); font-size: 14px; border-top: 1px solid var(--line); }
   @media (max-width: 860px) {
     .hero-grid { grid-template-columns: 1fr; }
@@ -214,6 +229,40 @@
   </div>
 </section>
 
+
+<section style="padding-top:0">
+  <div class="wrap show-grid">
+    <div>
+      <h2>See where every drive went</h2>
+      <p class="intro">Tap any drive to see its route. The map is drawn on your phone from the drive's own GPS points, so OpenMiles still never goes online.</p>
+      <ul class="show-list">
+        <li><strong>Start and end at a glance.</strong> A green dot where you started, a yellow dot where you parked.</li>
+        <li><strong>Streets when you want them.</strong> Tap Open in Maps to see the drive on real streets in Google Maps. Only Google Maps goes online, and only when you tap.</li>
+        <li><strong>Fix it right there.</strong> Pick the category, add a note, parking and tolls, or edit, split or merge the drive.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="phone light" role="img" aria-label="Illustration of a drive in OpenMiles: an 18.4 mile drive with its route drawn on a plain grid, a green start dot, a yellow end dot, an Open in Maps button and category choices with Business selected.">
+        <div class="d-title">Fri, Nov 20, 18.4 mi</div>
+        <div class="d-sub">8:12 AM to 8:41 AM. Source: GPS</div>
+        <div class="d-label">Map</div>
+        <svg class="d-map" viewBox="0 0 240 150" aria-hidden="true">
+          <g stroke="#E1E6EC" stroke-width="1">
+            <path d="M30 0V150M60 0V150M90 0V150M120 0V150M150 0V150M180 0V150M210 0V150M0 30H240M0 60H240M0 90H240M0 120H240"/>
+          </g>
+          <path d="M34 122 L52 118 L66 104 L70 86 L88 78 L104 80 L118 70 L126 52 L146 46 L166 48 L178 38 L196 34 L206 24" fill="none" stroke="#0F2A44" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="206" cy="24" r="8" fill="#fff"/><circle cx="206" cy="24" r="6" fill="#F2A900"/>
+          <circle cx="34" cy="122" r="8" fill="#fff"/><circle cx="34" cy="122" r="6" fill="#2E9E5B"/>
+        </svg>
+        <div class="d-legend"><span class="dot" style="background:#2E9E5B"></span>Start <span class="dot" style="background:#F2A900;margin-left:6px"></span>End <span style="margin-left:6px">North is up. About 9.6 mi across.</span></div>
+        <div class="d-btn">Open in Maps</div>
+        <div class="d-label" style="padding-top:12px">Category</div>
+        <div class="d-chips"><span class="d-chip on">Business</span><span class="d-chip">Personal</span><span class="d-chip">Medical</span><span class="d-chip">Charity</span></div>
+      </div>
+      <p class="caption" style="color:var(--sub)">Illustration with an example drive.</p>
+    </div>
+  </div>
+</section>
 
 <section style="padding-top:0">
   <div class="wrap">
