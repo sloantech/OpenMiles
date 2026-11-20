@@ -13,6 +13,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.openmiles.app.data.AppDatabase
@@ -39,6 +42,8 @@ import org.openmiles.app.domain.Calc
 import org.openmiles.app.domain.ImportedDrive
 import org.openmiles.app.domain.MileIqDrive
 import org.openmiles.app.domain.MileIqImport
+import org.openmiles.app.domain.PlaceNames
+import org.openmiles.app.domain.PlaceRule
 import org.openmiles.app.domain.TimelineImport
 import org.openmiles.app.domain.TripEdit
 import org.openmiles.app.domain.Validation
@@ -158,6 +163,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     val places = db.placeDao().observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Where each drive with a GPS route started and ended. Read from the route's two ends only. */
+    private val tripEnds = db.tripDao().observeEnds()
+        .map { rows ->
+            rows.mapNotNull { r ->
+                PlaceNames.endsFrom(r.head, r.tail)?.let { (start, end) -> PlaceNames.Ends(r.id, r.startTime, start, end) }
+            }
+        }
+        .flowOn(Dispatchers.Default)
+
+    /** The named place at each end of a drive, for the drive list, the map and renaming. */
+    data class DrivePlaces(val start: Place?, val end: Place?) {
+        val label: String? get() = PlaceNames.label(start?.name, end?.name)
+    }
+
+    val drivePlaces: StateFlow<Map<Long, DrivePlaces>> = combine(tripEnds, places) { ends, list ->
+        if (list.isEmpty()) return@combine emptyMap()
+        val rules = list.map { it.toRule() }
+        val byId = list.associateBy { it.id }
+        ends.mapNotNull { e ->
+            val s = AutoClassify.placeAt(rules, e.start.lat, e.start.lng)?.let { byId[it.id] }
+            val f = AutoClassify.placeAt(rules, e.end.lat, e.end.lng)?.let { byId[it.id] }
+            if (s == null && f == null) null else e.tripId to DrivePlaces(s, f)
+        }.toMap()
+    }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    private val spotPrefs = app.getSharedPreferences("place_spots", Context.MODE_PRIVATE)
+    private val dismissedSpots = MutableStateFlow(PlaceNames.decodeDismissed(spotPrefs.getString("dismissed", null)))
+
+    /** A spot you keep driving to or from that has no name yet. Shown as a "Name this spot?" card. */
+    val spotToName: StateFlow<PlaceNames.Spot?> = combine(tripEnds, places, dismissedSpots) { ends, list, dismissed ->
+        PlaceNames.unnamedSpots(ends, list.map { it.toRule() }, dismissed).firstOrNull()
+    }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** "Don't ask about this spot": it is never suggested again. */
+    fun dismissSpot(spot: PlaceNames.Spot) {
+        val next = (dismissedSpots.value + spot.center).takeLast(PlaceNames.MAX_DISMISSED)
+        spotPrefs.edit().putString("dismissed", PlaceNames.encodeDismissed(next)).apply()
+        dismissedSpots.value = next
+    }
+
+    /** Names a suggested spot. Its center is the average of every visit, so it fits them all. */
+    fun nameSpot(spot: PlaceNames.Spot, name: String, categoryId: Long?) {
+        addPlace(name, spot.center.lat, spot.center.lng, categoryId, false)
+        _rulesMessage.value = "Saved \"${name.trim()}\" as a place."
+    }
+
+    private fun Place.toRule() = PlaceRule(id, name, lat, lng, radiusMeters, categoryId, ignoreDrives)
 
     private val _work = MutableStateFlow(WorkHoursStore.load(app))
     val workHours: StateFlow<WorkHours> = _work

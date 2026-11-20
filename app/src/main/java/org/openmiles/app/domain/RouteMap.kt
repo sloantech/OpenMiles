@@ -98,6 +98,12 @@ object RouteMap {
         return sb.toString()
     }
 
+    /** A Google Maps link that shows one spot, so you can see what is there before naming it. */
+    fun spotLink(lat: Double, lng: Double): String? {
+        if (!lat.isFinite() || !lng.isFinite() || lat !in -90.0..90.0 || lng !in -180.0..180.0) return null
+        return "https://www.google.com/maps/search/?api=1&query=" + String.format(Locale.US, "%.5f%%2C%.5f", lat, lng)
+    }
+
     private fun latLng(p: TripEdit.RoutePoint): String =
         String.format(Locale.US, "%.5f%%2C%.5f", p.lat, p.lng)
 

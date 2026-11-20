@@ -60,7 +60,13 @@ private val StartGreen = Color(0xFF2E9E5B)
  * the route to the phone's maps app, which does go online, but only when you tap it.
  */
 @Composable
-fun DriveMapSection(tripId: Long, source: String, loadRoute: suspend () -> String) {
+fun DriveMapSection(
+    tripId: Long,
+    source: String,
+    loadRoute: suspend () -> String,
+    startName: String? = null,
+    endName: String? = null
+) {
     var points by remember(tripId) { mutableStateOf<List<TripEdit.RoutePoint>?>(null) }
     LaunchedEffect(tripId) {
         points = try {
@@ -106,7 +112,8 @@ fun DriveMapSection(tripId: Long, source: String, loadRoute: suspend () -> Strin
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .semantics {
                 contentDescription = "Map of this drive's route, about ${Calc.fmtMiles(across)} across. " +
-                    "Green dot is the start, yellow dot is the end. North is up."
+                    "Green dot is the start${startName?.let { ", $it" } ?: ""}, " +
+                    "yellow dot is the end${endName?.let { ", $it" } ?: ""}. North is up."
             }
     ) {
         Canvas(Modifier.fillMaxWidth().height(200.dp)) {
@@ -156,17 +163,16 @@ fun DriveMapSection(tripId: Long, source: String, loadRoute: suspend () -> Strin
     Spacer(Modifier.height(6.dp))
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Dot(StartGreen)
-        Text("Start", style = MaterialTheme.typography.bodySmall)
+        Text(startName?.let { "Start: $it" } ?: "Start", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.width(6.dp))
         Dot(endColor)
-        Text("End", style = MaterialTheme.typography.bodySmall)
-        Spacer(Modifier.width(6.dp))
-        Text(
-            "North is up. About ${Calc.fmtMiles(across)} across.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Text(endName?.let { "End: $it" } ?: "End", style = MaterialTheme.typography.bodySmall)
     }
+    Text(
+        "North is up. About ${Calc.fmtMiles(across)} across.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
     if (straightOnly) {
         Text(
             "Google Timeline only saved where this drive started and ended, so the dashed line is a straight line, not the road you took.",
@@ -200,7 +206,7 @@ private fun Dot(color: Color) {
  * any app that can open the link. Every try is written to the detection log, so a tap that
  * seems to do nothing can be explained.
  */
-private fun openInMaps(context: Context, url: String) {
+internal fun openInMaps(context: Context, url: String) {
     val app = context.applicationContext
     if (!Validation.isSafeWebLink(url)) {
         DiagLog.add(app, "Open in Maps: the link was not a safe web link, so it was not opened")

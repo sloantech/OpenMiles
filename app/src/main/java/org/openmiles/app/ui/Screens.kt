@@ -37,6 +37,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -84,6 +85,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationManagerCompat
@@ -116,6 +118,8 @@ import org.openmiles.app.domain.Csv
 import org.openmiles.app.domain.DateRange
 import org.openmiles.app.domain.ImportedDrive
 import org.openmiles.app.domain.Pause
+import org.openmiles.app.domain.PlaceNames
+import org.openmiles.app.domain.RouteMap
 import org.openmiles.app.domain.Report
 import org.openmiles.app.domain.ReportData
 import org.openmiles.app.domain.TimelineImport
@@ -271,6 +275,9 @@ private fun HighwayHeader() {
 @Composable
 fun DrivesScreen(vm: AppViewModel) {
     val trips by vm.trips.collectAsStateWithLifecycle()
+    val drivePlaces by vm.drivePlaces.collectAsStateWithLifecycle()
+    val spotToName by vm.spotToName.collectAsStateWithLifecycle()
+    var namingSpot by remember { mutableStateOf<Pair<PlaceNames.Spot, String>?>(null) }
     val categories by vm.categories.collectAsStateWithLifecycle()
     val rates by vm.rates.collectAsStateWithLifecycle()
     val live by vm.live.collectAsStateWithLifecycle()
@@ -370,6 +377,16 @@ fun DrivesScreen(vm: AppViewModel) {
                         snoozedUntil = now + UpdateReminder.SNOOZE_DAYS * UpdateReminder.DAY_MS
                         reminderPrefs.edit().putLong("until", snoozedUntil).apply()
                     }
+                )
+            }
+        }
+        spotToName?.let { spot ->
+            item(key = "spot") {
+                SpotCard(
+                    spot = spot,
+                    onPick = { name -> namingSpot = spot to name },
+                    onSeeOnMap = { RouteMap.spotLink(spot.center.lat, spot.center.lng)?.let { openInMaps(context, it) } },
+                    onDismiss = { vm.dismissSpot(spot) }
                 )
             }
         }
@@ -475,11 +492,30 @@ fun DrivesScreen(vm: AppViewModel) {
                         rates = rates,
                         onSwipeBusiness = { vm.quickClassify(trip.id, Kind.BUSINESS) },
                         onSwipePersonal = { vm.quickClassify(trip.id, Kind.PERSONAL) },
-                        onClick = { editingId = trip.id }
+                        onClick = { editingId = trip.id },
+                        placeLabel = drivePlaces[trip.id]?.label
                     )
                 }
             }
         }
+    }
+
+    namingSpot?.let { (spot, presetName) ->
+        val preset = PlaceNames.PRESETS.firstOrNull { it.name == presetName }
+        PlaceDialog(
+            title = "Name this spot",
+            initialName = presetName,
+            initialCategory = preset?.kind?.let { k -> categories.firstOrNull { it.kind == k }?.id },
+            initialIgnore = false,
+            categories = categories,
+            showIgnore = false,
+            onSave = { name, cat, _ ->
+                vm.nameSpot(spot, name, cat)
+                namingSpot = null
+            },
+            onDelete = null,
+            onClose = { namingSpot = null }
+        )
     }
 
     if (addingDrive) {
@@ -586,7 +622,11 @@ fun DrivesScreen(vm: AppViewModel) {
                 editingId = null
             },
             onClose = { editingId = null },
-            loadRoute = { vm.routeOf(editing.id) }
+            loadRoute = { vm.routeOf(editing.id) },
+            startPlace = drivePlaces[editing.id]?.start,
+            endPlace = drivePlaces[editing.id]?.end,
+            onUpdatePlace = { vm.updatePlace(it) },
+            onDeletePlace = { vm.deletePlace(it) }
         )
     }
 }
@@ -764,7 +804,8 @@ private fun TripRow(
     rates: List<Rate>,
     onSwipeBusiness: () -> Unit,
     onSwipePersonal: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    placeLabel: String? = null
 ) {
     val extra = LocalExtraColors.current
     val state = rememberSwipeToDismissBoxState(
@@ -819,6 +860,16 @@ private fun TripRow(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    if (placeLabel != null) {
+                        Text(
+                            placeLabel,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         when {
                             category == null -> Pill("Swipe to classify", extra.todo, extra.todoBg)
@@ -882,7 +933,11 @@ private fun TripDialog(
     onSaveNotes: (String) -> Unit,
     onDelete: () -> Unit,
     onClose: () -> Unit,
-    loadRoute: suspend () -> String
+    loadRoute: suspend () -> String,
+    startPlace: Place?,
+    endPlace: Place?,
+    onUpdatePlace: (Place) -> Unit,
+    onDeletePlace: (Place) -> Unit
 ) {
     var notes by remember(trip.id) { mutableStateOf(trip.notes) }
     var parkingText by remember(trip.id) { mutableStateOf(Validation.centsText(trip.parkingCents)) }
@@ -899,6 +954,7 @@ private fun TripDialog(
     }
     var confirmDelete by remember(trip.id) { mutableStateOf(false) }
     var naming by remember(trip.id) { mutableStateOf("") }
+    var renaming by remember(trip.id) { mutableStateOf<Place?>(null) }
 
     AlertDialog(
         onDismissRequest = {
@@ -913,7 +969,13 @@ private fun TripDialog(
                     style = MaterialTheme.typography.bodySmall
                 )
                 Spacer(Modifier.height(8.dp))
-                DriveMapSection(tripId = trip.id, source = trip.source, loadRoute = loadRoute)
+                DriveMapSection(
+                    tripId = trip.id,
+                    source = trip.source,
+                    loadRoute = loadRoute,
+                    startName = startPlace?.name,
+                    endName = endPlace?.name
+                )
                 Text("Category", fontWeight = FontWeight.Bold)
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -977,10 +1039,25 @@ private fun TripDialog(
                 }
                 if (trip.source != Source.MANUAL && trip.source != Source.MILEIQ) {
                     Spacer(Modifier.height(8.dp))
-                    Text("Name a place", fontWeight = FontWeight.Bold)
+                    Text("Places", fontWeight = FontWeight.Bold)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { naming = "start" }) { Text("Where it started") }
-                        OutlinedButton(onClick = { naming = "end" }) { Text("Where it ended") }
+                        if (startPlace != null) {
+                            OutlinedButton(onClick = { renaming = startPlace }) { Text("Start: ${startPlace.name}") }
+                        } else {
+                            OutlinedButton(onClick = { naming = "start" }) { Text("Name where it started") }
+                        }
+                        if (endPlace != null) {
+                            OutlinedButton(onClick = { renaming = endPlace }) { Text("End: ${endPlace.name}") }
+                        } else {
+                            OutlinedButton(onClick = { naming = "end" }) { Text("Name where it ended") }
+                        }
+                    }
+                    if (startPlace != null || endPlace != null) {
+                        Text(
+                            "Tap a place to rename it. The new name shows on every drive there.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -1012,6 +1089,26 @@ private fun TripDialog(
             },
             onDelete = null,
             onClose = { naming = "" }
+        )
+    }
+
+    renaming?.let { p ->
+        PlaceDialog(
+            title = "Rename place",
+            initialName = p.name,
+            initialCategory = p.categoryId,
+            initialIgnore = p.ignoreDrives,
+            categories = categories,
+            showIgnore = true,
+            onSave = { name, cat, ignore ->
+                onUpdatePlace(p.copy(name = name, categoryId = cat, ignoreDrives = ignore))
+                renaming = null
+            },
+            onDelete = {
+                onDeletePlace(p)
+                renaming = null
+            },
+            onClose = { renaming = null }
         )
     }
 
@@ -1684,6 +1781,22 @@ private fun PlaceDialog(
         title = { Text(title) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Tap a name, or type your own", style = MaterialTheme.typography.bodySmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    PlaceNames.PRESETS.forEach { preset ->
+                        FilterChip(
+                            selected = name == preset.name,
+                            onClick = {
+                                name = preset.name
+                                // Fill in a matching rule only if none is picked yet. It shows below.
+                                if (cat == null && preset.kind != null) {
+                                    cat = categories.firstOrNull { it.kind == preset.kind }?.id
+                                }
+                            },
+                            label = { Text(preset.name) }
+                        )
+                    }
+                }
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it.take(AppViewModel.MAX_CATEGORY_NAME) },
@@ -2109,6 +2222,40 @@ private fun shareLog(context: Context) {
 // ---------------------------------------------------------------------------
 // Update reminder (offline: it only knows how old this copy is)
 // ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SpotCard(
+    spot: PlaceNames.Spot,
+    onPick: (String) -> Unit,
+    onSeeOnMap: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Name this spot?", fontWeight = FontWeight.Bold)
+            Text(
+                "${spot.visits} of your drives started or ended here. The last one " +
+                    "${if (spot.lastWasEnd) "ended" else "started"} here on " +
+                    "${Calc.fmtDate(spot.lastTime)} at ${Calc.fmtTime(spot.lastTime)}.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                PlaceNames.PRESETS.forEach { preset ->
+                    AssistChip(onClick = { onPick(preset.name) }, label = { Text(preset.name) })
+                }
+                AssistChip(onClick = { onPick("") }, label = { Text("Other...") })
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onSeeOnMap) { Text("See it in Maps") }
+                TextButton(onClick = onDismiss) { Text("Don't ask about this spot") }
+            }
+        }
+    }
+}
 
 @Composable
 private fun UpdateBanner(monthsOld: Long, onCheck: () -> Unit, onLater: () -> Unit) {

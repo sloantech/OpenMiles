@@ -82,6 +82,12 @@ data class Trip(
     @ColumnInfo(defaultValue = "0") val tollsCents: Long = 0
 )
 
+/**
+ * The first and last few characters of a drive's route, enough to find where it started and
+ * ended without loading the whole route.
+ */
+data class TripEndsRow(val id: Long, val startTime: Long, val head: String?, val tail: String?)
+
 /** Just the times of a drive, for checking overlaps. */
 data class TimeSpan(val startTime: Long, val endTime: Long)
 
@@ -133,6 +139,10 @@ interface TripDao {
             "FROM trips ORDER BY startTime DESC"
     )
     fun observeSummaries(): Flow<List<TripSummary>>
+
+    /** Where every drive with a route started and ended, for place names. 120 = PlaceNames.END_CHARS. */
+    @Query("SELECT id, startTime, substr(route, 1, 120) AS head, substr(route, -120) AS tail FROM trips WHERE route != ''")
+    fun observeEnds(): Flow<List<TripEndsRow>>
 
     @Insert
     suspend fun insert(trip: Trip): Long
