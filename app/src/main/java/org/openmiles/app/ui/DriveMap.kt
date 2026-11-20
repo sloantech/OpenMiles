@@ -57,9 +57,11 @@ private val StartGreen = Color(0xFF2E9E5B)
 @Composable
 fun DriveMapSection(tripId: Long, source: String, loadRoute: suspend () -> String) {
     val points by produceState<List<TripEdit.RoutePoint>?>(initialValue = null, tripId) {
-        value = withContext(Dispatchers.Default) {
-            RouteMap.thin(RouteMap.points(loadRoute()), RouteMap.MAX_DRAW_POINTS)
+        val route = loadRoute()
+        val thinned = withContext(Dispatchers.Default) {
+            RouteMap.thin(RouteMap.points(route), RouteMap.MAX_DRAW_POINTS)
         }
+        value = thinned
     }
     val pts = points ?: return // still loading; it takes a moment at most
 
