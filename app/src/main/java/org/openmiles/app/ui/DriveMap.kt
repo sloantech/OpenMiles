@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.openmiles.app.data.Source
@@ -60,9 +61,15 @@ private val StartGreen = Color(0xFF2E9E5B)
 fun DriveMapSection(tripId: Long, source: String, loadRoute: suspend () -> String) {
     var points by remember(tripId) { mutableStateOf<List<TripEdit.RoutePoint>?>(null) }
     LaunchedEffect(tripId) {
-        val route = loadRoute()
-        points = withContext(Dispatchers.Default) {
-            RouteMap.thin(RouteMap.points(route), RouteMap.MAX_DRAW_POINTS)
+        points = try {
+            val route = loadRoute()
+            withContext(Dispatchers.Default) {
+                RouteMap.thin(RouteMap.points(route), RouteMap.MAX_DRAW_POINTS)
+            }
+        } catch (e: CancellationException) {
+            throw e // the dialog closed; stop quietly
+        } catch (e: Exception) {
+            emptyList() // a damaged route shows "no map" instead of closing the app
         }
     }
     val pts = points ?: return // still loading; it takes a moment at most
@@ -116,6 +123,8 @@ fun DriveMapSection(tripId: Long, source: String, loadRoute: suspend () -> Strin
 
             val pad = 20.dp.toPx()
             val xy = RouteMap.project(pts, size.width, size.height, pad)
+            // Nothing to draw before the box has a size.
+            if (xy.isEmpty()) return@Canvas
             if (xy.size >= 2) {
                 val path = Path().apply {
                     moveTo(xy[0].x, xy[0].y)
