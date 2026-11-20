@@ -22,7 +22,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,12 +58,12 @@ private val StartGreen = Color(0xFF2E9E5B)
  */
 @Composable
 fun DriveMapSection(tripId: Long, source: String, loadRoute: suspend () -> String) {
-    val points by produceState<List<TripEdit.RoutePoint>?>(initialValue = null, tripId) {
+    var points by remember(tripId) { mutableStateOf<List<TripEdit.RoutePoint>?>(null) }
+    LaunchedEffect(tripId) {
         val route = loadRoute()
-        val thinned = withContext(Dispatchers.Default) {
+        points = withContext(Dispatchers.Default) {
             RouteMap.thin(RouteMap.points(route), RouteMap.MAX_DRAW_POINTS)
         }
-        value = thinned
     }
     val pts = points ?: return // still loading; it takes a moment at most
 
