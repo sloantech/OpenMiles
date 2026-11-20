@@ -3,6 +3,23 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.14.0] - 2026-11-20
+
+### Added
+- Name places with a tap. When three or more drives start or end at the same unnamed spot, a
+  "Name this spot?" card asks what it is. Tap Home, Work, Bank, Store, Gym or another ready-made
+  name. No typing needed, unless you want your own name. "See it in Maps" shows the spot first,
+  "Later" hides these cards for a week, and "Don't ask about this spot" makes that one go away
+  for good.
+- Named places now show on your drives: "Home to Bank" in the drive list, and "Start: Home" and
+  "End: Bank" under the drive map.
+- Tap a place on any drive to rename it. The new name shows on every drive there.
+- Work, Office and Client fill in a Business rule, and Doctor fills in Medical, so new drives
+  there are classified for you. You see the rule before saving and can change it.
+- Every place-naming box now has the same tap-to-name list, including in Settings.
+
+All of this happens on your phone. Nothing is looked up online.
+
 ## [0.13.1] - 2026-11-20
 
 ### Fixed

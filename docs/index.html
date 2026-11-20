@@ -136,17 +136,17 @@
           <a class="btn btn-amber" href="https://github.com/sloantech/OpenMiles/releases/latest">Download for Android</a>
           <a class="btn btn-ghost" href="https://github.com/sloantech/OpenMiles">See the source code</a>
         </div>
-        <p class="note">Free forever under the GPL-3.0 license. Currently in beta, <span data-app-version>Version 0.13.1</span>.</p>
+        <p class="note">Free forever under the GPL-3.0 license. Currently in beta, <span data-app-version>Version 0.14.0</span>.</p>
       </div>
       <div>
-        <div class="phone" role="img" aria-label="Illustration of the OpenMiles Drives screen with a monthly summary, a Start drive button and three drives.">
+        <div class="phone" role="img" aria-label="Illustration of the OpenMiles Drives screen with a monthly summary, a Start drive button and three drives, two labeled with place names.">
           <div class="p-head"><span>OpenMiles</span><span class="p-chip">Auto-detect on</span></div>
           <div class="p-body">
             <div class="p-sum"><small>THIS MONTH</small><div class="p-big">142.3 mi</div><div style="font-size:11px;color:#B9C7D6">23 drives &middot; $103.12 business value</div></div>
             <div class="p-start">&#9654; Start drive</div>
-            <div class="p-card"><div>8:12 AM to 8:41 AM<br><span class="pill biz">Business</span></div><div class="p-miles">18.4</div></div>
+            <div class="p-card"><div>8:12 AM to 8:41 AM<br><b style="color:var(--text)">Home to Office</b><br><span class="pill biz">Business</span></div><div class="p-miles">18.4</div></div>
             <div class="p-card"><div>12:05 PM to 12:19 PM<br><span class="pill todo">Swipe to classify</span></div><div class="p-miles">6.2</div></div>
-            <div class="p-card"><div>5:30 PM to 5:52 PM<br><span class="pill per">Personal</span></div><div class="p-miles">11.7</div></div>
+            <div class="p-card"><div>5:30 PM to 5:52 PM<br><b style="color:var(--text)">Office to Gym</b><br><span class="pill per">Personal</span></div><div class="p-miles">11.7</div></div>
           </div>
         </div>
         <p class="caption">Illustration with example drives.</p>
@@ -220,6 +220,7 @@
       <div class="card"><h3>Reports you can hand in</h3><p>Any date range, as a printable PDF mileage log or a spreadsheet. Parking, tolls and yearly odometer readings included.</p></div>
       <div class="card"><h3>Starts with your car</h3><p>Pick your car's Bluetooth and drives start the moment your phone connects. Motion detection still covers rentals and rides.</p></div>
       <div class="card"><h3>Hands-free updates</h3><p>Hear "Drive started" and "Drive saved, 12.4 miles" in your phone's own offline voice. Classify with one tap on the notification when you park.</p></div>
+      <div class="card"><h3>Places with one tap</h3><p>Keep stopping at the same spot? OpenMiles asks what it is. Tap Home, Work or Bank, and your drives read "Home to Bank" from then on.</p></div>
       <div class="card"><h3>See every drive on a map</h3><p>Tap a drive to see the route it took, drawn on your phone with no internet. Want streets? One tap opens it in Google Maps.</p></div>
       <div class="card"><h3>Fix anything</h3><p>Edit, split or merge drives, or add one by hand. Changed drives are clearly marked, so your log stays honest.</p></div>
       <div class="card"><h3>Bring your history</h3><p>Import past drives from your Google Maps Timeline, or the CSV report from your old mileage app. Read only on your phone.</p></div>
@@ -236,13 +237,13 @@
       <h2>See where every drive went</h2>
       <p class="intro">Tap any drive to see its route. The map is drawn on your phone from the drive's own GPS points, so OpenMiles still never goes online.</p>
       <ul class="show-list">
-        <li><strong>Start and end at a glance.</strong> A green dot where you started, a yellow dot where you parked.</li>
+        <li><strong>Start and end at a glance.</strong> A green dot where you started, a yellow dot where you parked, with your place names.</li>
         <li><strong>Streets when you want them.</strong> Tap Open in Maps to see the drive on real streets in Google Maps. Only Google Maps goes online, and only when you tap.</li>
         <li><strong>Fix it right there.</strong> Pick the category, add a note, parking and tolls, or edit, split or merge the drive.</li>
       </ul>
     </div>
     <div>
-      <div class="phone light" role="img" aria-label="Illustration of a drive in OpenMiles: an 18.4 mile drive with its route drawn on a plain grid, a green start dot, a yellow end dot, an Open in Maps button and category choices with Business selected.">
+      <div class="phone light" role="img" aria-label="Illustration of a drive in OpenMiles: an 18.4 mile drive from Home to Office with its route drawn on a plain grid, a green start dot, a yellow end dot, an Open in Maps button and category choices with Business selected.">
         <div class="d-title">Fri, Nov 20, 18.4 mi</div>
         <div class="d-sub">8:12 AM to 8:41 AM. Source: GPS</div>
         <div class="d-label">Map</div>
@@ -254,7 +255,8 @@
           <circle cx="206" cy="24" r="8" fill="#fff"/><circle cx="206" cy="24" r="6" fill="#F2A900"/>
           <circle cx="34" cy="122" r="8" fill="#fff"/><circle cx="34" cy="122" r="6" fill="#2E9E5B"/>
         </svg>
-        <div class="d-legend"><span class="dot" style="background:#2E9E5B"></span>Start <span class="dot" style="background:#F2A900;margin-left:6px"></span>End <span style="margin-left:6px">North is up. About 9.6 mi across.</span></div>
+        <div class="d-legend"><span class="dot" style="background:#2E9E5B"></span>Start: Home <span class="dot" style="background:#F2A900;margin-left:6px"></span>End: Office</div>
+        <div class="d-legend" style="padding-top:2px">North is up. About 9.6 mi across.</div>
         <div class="d-btn">Open in Maps</div>
         <div class="d-label" style="padding-top:12px">Category</div>
         <div class="d-chips"><span class="d-chip on">Business</span><span class="d-chip">Personal</span><span class="d-chip">Medical</span><span class="d-chip">Charity</span></div>

@@ -192,12 +192,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val spotPrefs = app.getSharedPreferences("place_spots", Context.MODE_PRIVATE)
     private val dismissedSpots = MutableStateFlow(PlaceNames.decodeDismissed(spotPrefs.getString("dismissed", null)))
+    private val spotsSnoozedUntil = MutableStateFlow(spotPrefs.getLong("snoozed_until", 0L))
 
     /** A spot you keep driving to or from that has no name yet. Shown as a "Name this spot?" card. */
-    val spotToName: StateFlow<PlaceNames.Spot?> = combine(tripEnds, places, dismissedSpots) { ends, list, dismissed ->
+    val spotToName: StateFlow<PlaceNames.Spot?> = combine(tripEnds, places, dismissedSpots, spotsSnoozedUntil) { ends, list, dismissed, until ->
+        if (System.currentTimeMillis() < until) return@combine null
         PlaceNames.unnamedSpots(ends, list.map { it.toRule() }, dismissed).firstOrNull()
     }.flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** "Later": no "Name this spot?" cards for a week. */
+    fun snoozeSpots() {
+        val until = System.currentTimeMillis() + 7L * 24 * 60 * 60 * 1000
+        spotPrefs.edit().putLong("snoozed_until", until).apply()
+        spotsSnoozedUntil.value = until
+    }
 
     /** "Don't ask about this spot": it is never suggested again. */
     fun dismissSpot(spot: PlaceNames.Spot) {

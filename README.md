@@ -24,6 +24,8 @@ so compare your first weeks of drives against another tracker or your odometer.
 - Records the route with GPS and adds up the miles. A drive in progress is saved every 30 seconds.
 - Tap a drive to see a map of its route, drawn on your phone with no internet. "Open in Maps"
   shows it on real streets in Google Maps if you want.
+- **Places with one tap:** when you keep starting or ending drives at the same spot, the app asks
+  what it is. Tap Home, Work, Bank or another name. Drives then show "Home to Bank".
 - Swipe a drive right for Business or left for Personal.
 - Tap a drive to pick any category (Business, Personal, Medical, Charity, or your own) and add notes.
 - Mileage value uses IRS rates by date (2025 and 2026 rates are built in, including the July 2026 change).
@@ -47,6 +49,7 @@ so compare your first weeks of drives against another tracker or your odometer.
 ## Roadmap
 
 Done in 0.13.0: drive maps, car Bluetooth start, spoken updates, and one-tap classify buttons.
+Done in 0.14.0: one-tap place names, shown on drives and maps.
 
 Next, one at a time:
 
@@ -56,6 +59,8 @@ Next, one at a time:
 - A check of your log before you export it (overlapping drives, business drives with no purpose,
   odometer gaps).
 - One-tap return trip.
+- Business names for places you've never named (like "Wells Fargo"), as an optional add-on app.
+  Looking up a business needs the internet, so it would never be part of OpenMiles itself.
 - More than one vehicle, each with its own log.
 - Fuel log with miles per gallon.
 - A Commute category, kept out of business totals.

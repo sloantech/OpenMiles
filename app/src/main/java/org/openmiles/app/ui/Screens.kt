@@ -386,6 +386,7 @@ fun DrivesScreen(vm: AppViewModel) {
                     spot = spot,
                     onPick = { name -> namingSpot = spot to name },
                     onSeeOnMap = { RouteMap.spotLink(spot.center.lat, spot.center.lng)?.let { openInMaps(context, it) } },
+                    onLater = { vm.snoozeSpots() },
                     onDismiss = { vm.dismissSpot(spot) }
                 )
             }
@@ -2229,6 +2230,7 @@ private fun SpotCard(
     spot: PlaceNames.Spot,
     onPick: (String) -> Unit,
     onSeeOnMap: () -> Unit,
+    onLater: () -> Unit,
     onDismiss: () -> Unit
 ) {
     Card(
@@ -2249,8 +2251,9 @@ private fun SpotCard(
                 }
                 AssistChip(onClick = { onPick("") }, label = { Text("Other...") })
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 TextButton(onClick = onSeeOnMap) { Text("See it in Maps") }
+                TextButton(onClick = onLater) { Text("Later") }
                 TextButton(onClick = onDismiss) { Text("Don't ask about this spot") }
             }
         }
