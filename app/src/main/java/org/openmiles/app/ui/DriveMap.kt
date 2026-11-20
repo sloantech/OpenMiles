@@ -1,5 +1,6 @@
 package org.openmiles.app.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -49,6 +50,7 @@ import org.openmiles.app.domain.Calc
 import org.openmiles.app.domain.RouteMap
 import org.openmiles.app.domain.TripEdit
 import org.openmiles.app.domain.Validation
+import org.openmiles.app.tracking.DiagLog
 
 private val StartGreen = Color(0xFF2E9E5B)
 
@@ -193,11 +195,40 @@ private fun Dot(color: Color) {
     Box(Modifier.size(10.dp).clip(CircleShape).background(color))
 }
 
+/**
+ * Hands the route to Google Maps. It tries the Google Maps app first, then lets the person pick
+ * any app that can open the link. Every try is written to the detection log, so a tap that
+ * seems to do nothing can be explained.
+ */
 private fun openInMaps(context: Context, url: String) {
-    if (!Validation.isSafeWebLink(url)) return
+    val app = context.applicationContext
+    if (!Validation.isSafeWebLink(url)) {
+        DiagLog.add(app, "Open in Maps: the link was not a safe web link, so it was not opened")
+        Toast.makeText(context, "Could not open this drive in Maps.", Toast.LENGTH_LONG).show()
+        return
+    }
+    val uri = Uri.parse(url)
+    val googleMaps = Intent(Intent.ACTION_VIEW, uri)
+        .setPackage(GOOGLE_MAPS)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     try {
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        context.startActivity(googleMaps)
+        DiagLog.add(app, "Open in Maps: sent to the Google Maps app")
+        return
+    } catch (e: ActivityNotFoundException) {
+        DiagLog.add(app, "Open in Maps: Google Maps app not found or turned off, asking which app to use")
     } catch (e: Exception) {
+        DiagLog.add(app, "Open in Maps: Google Maps refused (${e.javaClass.simpleName}), asking which app to use")
+    }
+    try {
+        val pick = Intent.createChooser(Intent(Intent.ACTION_VIEW, uri), "Open this drive with")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(pick)
+        DiagLog.add(app, "Open in Maps: showed the list of apps")
+    } catch (e: Exception) {
+        DiagLog.add(app, "Open in Maps: no app could open the link (${e.javaClass.simpleName})")
         Toast.makeText(context, "No maps app or browser found to open this.", Toast.LENGTH_LONG).show()
     }
 }
+
+private const val GOOGLE_MAPS = "com.google.android.apps.maps"

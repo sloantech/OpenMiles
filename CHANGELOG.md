@@ -3,6 +3,13 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.13.1] - 2026-11-20
+
+### Fixed
+- "Open in Maps" could do nothing on some phones. It now opens the Google Maps app directly. If
+  Google Maps is missing or turned off, you get a list of apps to choose from instead.
+- Each "Open in Maps" tap is written to the detection log, so if it ever fails, the log says why.
+
 ## [0.13.0] - 2026-11-20
 
 ### Added
