@@ -19,8 +19,9 @@ so compare your first weeks of drives against another tracker or your odometer.
   and ends a minute after it disconnects. Motion detection still works as a backup.
 - **Spoken updates** (optional): hear "Drive started" and "Drive saved, 12.4 miles", using your
   phone's own offline voice.
-- **Business or personal?** (optional): a notification with one-tap Business and Personal
-  buttons when a drive ends without a category.
+- **Business or personal?** a pop-up notification with one-tap Business and Personal buttons
+  when a drive ends without a category. On by default once automatic detection is on, and you
+  can turn it off.
 - Records the route with GPS and adds up the miles. A drive in progress is saved every 30 seconds.
 - Tap a drive to see a map of its route, drawn on your phone with no internet. "Open in Maps"
   shows it on real streets in Google Maps if you want.
@@ -40,11 +41,17 @@ so compare your first weeks of drives against another tracker or your odometer.
 - Backup and restore: save one backup file wherever you like, and restore it on a new phone.
   Restoring only adds what is missing and never deletes anything.
 - Light and dark looks that follow your phone, or pick one in Settings.
-- A gentle weekly reminder when drives still need a category (can be turned off).
+- **Notifications**, all in one place in Settings and all made on your phone (no email, nothing
+  sent anywhere): a weekly summary of your miles and value on the day and time you pick, an
+  optional monthly summary on the 1st, and an optional quiet note when a rule classifies a drive.
+  Each kind has its own entry in your phone's notification settings.
 - A private detection log in Settings shows why each drive started, ended, or was not kept.
 - The version number is shown in Settings, under About.
 
 ## Roadmap
+
+Done in 0.14.0: a Notifications section with a pop-up classify prompt, weekly and monthly
+summaries, and rule notices.
 
 Done in 0.13.0: drive maps, car Bluetooth start, spoken updates, and one-tap classify buttons.
 

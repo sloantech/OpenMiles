@@ -3,6 +3,30 @@
 What changed in each version of OpenMiles. The newest version is at the top.
 Each version's installable file is on the [Releases page](https://github.com/sloantech/OpenMiles/releases).
 
+## [0.14.0] - 2026-11-22
+
+### Added
+- A Notifications section in Settings, with every kind of notification in one place.
+- The "Business or personal?" notification now pops up at the top of the screen when a drive
+  ends, so you can classify it in one tap without opening the app. It is on by default once
+  automatic drive detection is on, like other mileage apps. You can turn it off. If you already
+  turned it on or off yourself, your choice is kept.
+- "Show a test pop-up" in Settings, to see what it looks like and check your phone shows it.
+- Weekly summary: miles, business miles and value for the past 7 days, plus how many drives still
+  need a category. Pick the day and time. It stays on Sundays at 6 PM unless you change it.
+- Monthly summary on the 1st at 9 AM, with last month's totals. Optional and off by default.
+- "Drive classified by a rule": a quiet note with no sound or pop-up when work hours or a place
+  picked the category. Optional and off by default.
+- The count of drives waiting for a category rides along on notifications, so phones that show
+  a number on the app icon show it for OpenMiles.
+- Each kind of notification has its own entry in the phone's notification settings, so you can
+  change sound or pop-ups for one without touching the others.
+
+### Changed
+- The "Ask business or personal" switch moved from Spoken updates to the new Notifications section.
+- Classifying a drive in the app now clears its "Business or personal?" notification.
+- The weekly summary keeps its time when clocks change for daylight saving time.
+
 ## [0.13.1] - 2026-11-20
 
 ### Fixed
