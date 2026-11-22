@@ -436,12 +436,12 @@ class TrackingService : Service() {
     /** The optional "Business or personal?" notification and the spoken "Drive saved". */
     private suspend fun tellAboutSavedDrive(appContext: Context, tripId: Long, meters: Double, categoryId: Long?) {
         try {
+            val db = AppDatabase.get(appContext)
             val ask = categoryId == null && VoiceSettings.askOn(appContext)
-            if (ask) DriveEndNotice.show(appContext, tripId, meters)
+            if (ask) DriveEndNotice.show(appContext, tripId, meters, db.tripDao().countUnclassified())
+            val name = categoryId?.let { id -> db.categoryDao().all().firstOrNull { it.id == id }?.name }
+            if (name != null) AutoClassifiedNotice.show(appContext, tripId, meters, name)
             if (VoiceSettings.speakOn(appContext)) {
-                val name = categoryId?.let { id ->
-                    AppDatabase.get(appContext).categoryDao().all().firstOrNull { it.id == id }?.name
-                }
                 Speaker.say(appContext, Speech.saved(meters, name, ask))
             }
         } catch (e: Exception) {

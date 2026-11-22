@@ -153,6 +153,13 @@ interface TripDao {
     @Query("SELECT COUNT(*) FROM trips WHERE categoryId IS NULL OR categoryId NOT IN (SELECT id FROM categories)")
     suspend fun countUnclassified(): Int
 
+    /** Drives that started in [fromMs, toMs), without the route, for the summaries. */
+    @Query(
+        "SELECT id, startTime, endTime, distanceMeters, categoryId, notes, source, edited, parkingCents, tollsCents " +
+            "FROM trips WHERE startTime >= :fromMs AND startTime < :toMs"
+    )
+    suspend fun summariesBetween(fromMs: Long, toMs: Long): List<TripSummary>
+
     // Plain (non-suspend) versions for backup and restore, which run on a background thread
     // inside one database transaction. Never call these from the main thread.
     @Query("SELECT * FROM trips ORDER BY id LIMIT :limit OFFSET :offset")

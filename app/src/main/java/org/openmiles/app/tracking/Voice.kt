@@ -1,7 +1,5 @@
 package org.openmiles.app.tracking
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -41,8 +39,15 @@ object VoiceSettings {
     fun speakOn(context: Context): Boolean = prefs(context).getBoolean(KEY_SPEAK, false)
     fun setSpeak(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_SPEAK, on).apply()
 
-    /** Show Business and Personal buttons on a notification when an unclassified drive is saved. */
-    fun askOn(context: Context): Boolean = prefs(context).getBoolean(KEY_ASK, false)
+    /**
+     * Show Business and Personal buttons on a notification when an unclassified drive is saved.
+     * Until the person picks on or off, it follows automatic detection: on once that is on,
+     * like MileIQ, because that is when drives show up without the person noticing.
+     */
+    fun askOn(context: Context): Boolean {
+        val p = prefs(context)
+        return if (p.contains(KEY_ASK)) p.getBoolean(KEY_ASK, false) else AutoDetect.isEnabled(context)
+    }
     fun setAsk(context: Context, on: Boolean) = prefs(context).edit().putBoolean(KEY_ASK, on).apply()
 }
 
@@ -161,19 +166,20 @@ object Speaker {
  * without opening the app. Nothing is sent anywhere.
  */
 object DriveEndNotice {
-    private const val CHANNEL = "drive_ended"
     const val ACTION = "org.openmiles.app.CLASSIFY_FROM_NOTICE"
     const val EXTRA_TRIP = "trip"
     const val EXTRA_KIND = "kind"
+    /** The test notification's buttons carry this, which matches no drive. */
+    const val TEST_TRIP = -7L
+    private const val TEST_ID = 999
 
     private fun notificationId(tripId: Long): Int = 1000 + (tripId % 100_000L).toInt()
 
-    fun show(context: Context, tripId: Long, meters: Double) {
+    /** [waiting] is every drive still without a category, for the number on the app icon. */
+    fun show(context: Context, tripId: Long, meters: Double, waiting: Int = 1) {
         val manager = NotificationManagerCompat.from(context)
         if (!manager.areNotificationsEnabled()) return
-        context.getSystemService(NotificationManager::class.java)?.createNotificationChannel(
-            NotificationChannel(CHANNEL, "Drive ended", NotificationManager.IMPORTANCE_DEFAULT)
-        )
+        Channels.ensure(context)
         fun button(kind: String, code: Int): PendingIntent = PendingIntent.getBroadcast(
             context,
             notificationId(tripId) * 2 + code,
@@ -186,10 +192,14 @@ object DriveEndNotice {
         val open = PendingIntent.getActivity(
             context, 22, Intent(context, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE
         )
-        val notification = NotificationCompat.Builder(context, CHANNEL)
+        val notification = NotificationCompat.Builder(context, Channels.DRIVE_ENDED)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentTitle(context.getString(R.string.app_name))
             .setContentText("Drive saved, ${Speech.miles(meters)}. Business or personal?")
+            // High priority makes it pop up at the top of the screen on Android 7 and older too.
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setNumber(waiting.coerceAtLeast(1))
             .setContentIntent(open)
             .setAutoCancel(true)
             .addAction(0, "Business", button(Kind.BUSINESS, 0))
@@ -202,8 +212,44 @@ object DriveEndNotice {
         }
     }
 
+    /**
+     * A sample pop-up from Settings, so people can see what it looks like and check their phone
+     * shows it. Its buttons point at no drive, so tapping them changes nothing.
+     */
+    fun showTest(context: Context): Boolean {
+        val manager = NotificationManagerCompat.from(context)
+        if (!manager.areNotificationsEnabled()) return false
+        Channels.ensure(context)
+        fun button(kind: String, code: Int): PendingIntent = PendingIntent.getBroadcast(
+            context, 30 + code,
+            Intent(context, ClassifyActionReceiver::class.java)
+                .setAction(ACTION).putExtra(EXTRA_TRIP, TEST_TRIP).putExtra(EXTRA_KIND, kind),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(context, Channels.DRIVE_ENDED)
+            .setSmallIcon(android.R.drawable.ic_menu_mylocation)
+            .setContentTitle(context.getString(R.string.app_name))
+            .setContentText("Test: Drive saved, 12.4 miles. Business or personal?")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .addAction(0, "Business", button(Kind.BUSINESS, 0))
+            .addAction(0, "Personal", button(Kind.PERSONAL, 1))
+            .build()
+        return try {
+            manager.notify(TEST_ID, notification)
+            true
+        } catch (e: SecurityException) {
+            false
+        }
+    }
+
     fun cancel(context: Context, tripId: Long) {
         NotificationManagerCompat.from(context).cancel(notificationId(tripId))
+    }
+
+    fun cancelTest(context: Context) {
+        NotificationManagerCompat.from(context).cancel(TEST_ID)
     }
 }
 
@@ -213,6 +259,10 @@ class ClassifyActionReceiver : BroadcastReceiver() {
         if (intent.action != DriveEndNotice.ACTION) return
         val tripId = intent.getLongExtra(DriveEndNotice.EXTRA_TRIP, -1L)
         val kind = intent.getStringExtra(DriveEndNotice.EXTRA_KIND)
+        if (tripId == DriveEndNotice.TEST_TRIP) {
+            DriveEndNotice.cancelTest(context.applicationContext)
+            return
+        }
         if (tripId <= 0L || (kind != Kind.BUSINESS && kind != Kind.PERSONAL)) return
         val app = context.applicationContext
         DriveEndNotice.cancel(app, tripId)

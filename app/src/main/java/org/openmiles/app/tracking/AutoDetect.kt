@@ -307,7 +307,7 @@ class BootReceiver : BroadcastReceiver() {
             else -> return
         }
         // Android also forgets alarms after a restart.
-        ClassifyReminder.schedule(context)
+        Summary.schedule(context)
     }
 }
 

@@ -44,7 +44,10 @@ import org.openmiles.app.domain.TripEdit
 import org.openmiles.app.domain.Validation
 import org.openmiles.app.domain.WorkHours
 import org.openmiles.app.tracking.AutoDetect
-import org.openmiles.app.tracking.ClassifyReminder
+import org.openmiles.app.tracking.Channels
+import org.openmiles.app.tracking.Summary
+import org.openmiles.app.tracking.DriveEndNotice
+import org.openmiles.app.tracking.AutoClassifiedNotice
 import org.openmiles.app.tracking.DraftStore
 import org.openmiles.app.tracking.LiveTrip
 import org.openmiles.app.tracking.TrackingState
@@ -70,7 +73,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         // Detection can be forgotten (for example after a phone update). Sign up again.
         AutoDetect.register(app)
-        ClassifyReminder.schedule(app)
+        Channels.ensure(app)
+        Summary.schedule(app)
     }
 
     /** Swipe right or left: use the built-in category for that kind. */
@@ -78,11 +82,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val category = db.categoryDao().builtIn(kind) ?: return@launch
             db.tripDao().setCategory(tripId, category.id)
+            clearNotices(tripId)
         }
     }
 
     fun setCategory(tripId: Long, categoryId: Long?) {
-        viewModelScope.launch { db.tripDao().setCategory(tripId, categoryId) }
+        viewModelScope.launch {
+            db.tripDao().setCategory(tripId, categoryId)
+            clearNotices(tripId)
+        }
+    }
+
+    /** A drive classified in the app no longer needs its "Business or personal?" notification. */
+    private fun clearNotices(tripId: Long) {
+        val app = getApplication<Application>()
+        DriveEndNotice.cancel(app, tripId)
+        AutoClassifiedNotice.cancel(app, tripId)
     }
 
     fun setNotes(tripId: Long, notes: String) {

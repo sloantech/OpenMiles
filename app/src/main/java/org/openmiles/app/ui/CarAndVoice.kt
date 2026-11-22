@@ -208,7 +208,7 @@ fun CarBluetoothSection() {
 }
 
 // ---------------------------------------------------------------------------
-// Spoken updates and the "Business or personal?" notification
+// Spoken updates
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -216,18 +216,7 @@ fun VoiceSection() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var speak by remember { mutableStateOf(VoiceSettings.speakOn(context)) }
-    var ask by remember { mutableStateOf(VoiceSettings.askOn(context)) }
     var testing by remember { mutableStateOf(false) }
-
-    val notificationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        VoiceSettings.setAsk(context, granted)
-        ask = granted
-        if (!granted) {
-            Toast.makeText(context, "Notifications are off for OpenMiles, so it can't ask.", Toast.LENGTH_LONG).show()
-        }
-    }
 
     Text("Spoken updates", style = MaterialTheme.typography.titleLarge)
     Row(
@@ -274,34 +263,6 @@ fun VoiceSection() {
             style = MaterialTheme.typography.bodySmall
         )
     }
-    Spacer(Modifier.height(8.dp))
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            "Ask business or personal when a drive ends",
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge
-        )
-        Switch(checked = ask, onCheckedChange = { turnOn ->
-            if (turnOn && Build.VERSION.SDK_INT >= 33 &&
-                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-                PackageManager.PERMISSION_GRANTED
-            ) {
-                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            } else {
-                VoiceSettings.setAsk(context, turnOn)
-                ask = turnOn
-            }
-        })
-    }
-    Text(
-        "Shows a notification with Business and Personal buttons when a drive is saved without a " +
-            "category. Tap one when you're parked. Never use your phone while driving.",
-        style = MaterialTheme.typography.bodySmall
-    )
 }
 
 private fun openSettingsPage(context: Context) {
